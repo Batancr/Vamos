@@ -42,6 +42,12 @@ body { margin: 0; -webkit-text-size-adjust: 100%; background: var(--sea); color:
 .toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); background: var(--ink); color: var(--ticket); padding: 8px 14px; border-radius: 6px; font-weight: 700; max-width: calc(100% - 32px); text-align: center; }
 .look { position: absolute; right: 60px; top: 12px; width: 220px; background: var(--ticket); border: 2px solid var(--ink); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .look a { color: var(--ink); font-weight: 700; }
+.look label { display: flex; gap: 8px; align-items: center; }
+.look input { accent-color: var(--stamp); }
+.chars { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; margin-top: 6px; }
+.char { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border: 2px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font: 12.5px var(--body); color: var(--ink); text-align: center; }
+.char span { font-size: 22px; line-height: 1; }
+.char[aria-pressed="true"] { border-color: var(--ink); box-shadow: 3px 3px 0 var(--gold); }
 .look small { color: var(--muted); font-size: 11.5px; }
 .credit { position: absolute; right: 8px; bottom: 6px; max-width: min(360px, 60%); font-size: 10px; line-height: 1.3; text-align: right; background: rgba(251,248,241,.85); color: var(--ink); padding: 2px 6px; border-radius: 3px; }
 .credit a { color: var(--ink); }
@@ -136,8 +142,15 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
       <button id="zout" title="Zoom out" aria-label="Zoom out">−</button>
       <button id="zfit" title="Fit trip" aria-label="Fit trip to screen">⤢</button>
       <button id="tool" class="tool" title="Draw lines freehand" aria-label="Draw lines freehand" aria-pressed="false">✏️</button>
-      <button id="sat" class="tool" title="Satellite view when zoomed in" aria-label="Satellite view when zoomed in" aria-pressed="true">🛰️</button>
+      <button id="sat" title="Map style and stops" aria-label="Map style and stops" aria-expanded="false" aria-controls="layerMenu">🛰️</button>
       <button id="look" title="Look around here in Google Maps" aria-label="Look around here in Google Maps" aria-expanded="false" aria-controls="lookMenu">🔭</button>
+    </div>
+    <div class="look" id="layerMenu" hidden>
+      <b>When zoomed in, show</b>
+      <label><input type="radio" name="layer" value="sat" checked> Satellite</label>
+      <label><input type="radio" name="layer" value="streets"> Streets and roads</label>
+      <label><input type="radio" name="layer" value="relief"> Relief map only</label>
+      <label style="margin-top:4px"><input type="checkbox" id="showStops" checked> Stops: ⚓ ports, 🪂 hills, 🎈 balloon sites</label>
     </div>
     <div class="look" id="lookMenu" hidden>
       <b>Look around the ⊕ spot</b>
@@ -170,6 +183,12 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
         <input class="txt" id="nameB" maxlength="40" placeholder="Name the finish" aria-label="Name the finish">
       </div>
       <p class="rules-note" id="rulesNote" style="margin-top:6px"></p>
+    </div>
+
+    <div>
+      <div class="label">Character</div>
+      <div class="chars" id="chars"></div>
+      <p class="hint" id="charPower" style="margin-top:6px"></p>
     </div>
 
     <div class="challenge" id="challenge" hidden></div>
@@ -205,7 +224,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
       <div class="row" style="margin-top:6px"><button class="btn" id="backup">Make backup code</button><button class="btn" id="restore">Restore</button></div>
       <p class="hint" id="codeMsg" style="margin-top:4px" aria-live="polite"></p>
     </details>
-    <p class="foot">Planes are banned. Terrain from <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (Mapzen; SRTM, GMTED, ETOPO1 and others). Borders from Natural Earth via world-atlas; lakes from Natural Earth. Satellite imagery from EOxCloudless by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0. Speeds and rules are a simplified game model, not real travel advice.</p>
+    <p class="foot">Planes are banned. Terrain from <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (Mapzen; SRTM, GMTED, ETOPO1 and others). Borders from Natural Earth via world-atlas; lakes from Natural Earth. Streets from © OpenStreetMap contributors. Port locations from Natural Earth. Characters are original, inspired by well-known stories. Satellite imagery from EOxCloudless by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0. Speeds and rules are a simplified game model, not real travel advice.</p>
   </aside>
 </div>
 <script src="phys.js"></script>

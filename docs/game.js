@@ -2,7 +2,7 @@
 // ---------- state ----------
 const $ = id => document.getElementById(id);
 const cv = $('map'), ctx = cv.getContext('2d');
-const S = { trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
+const S = { trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, char: 'none', showStops: true, markers: [], view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
 let baseImg, W = 0, H = 0, DPR = 1;
 
 // ---------- progress (stats and badges), kept in this browser only ----------
@@ -17,7 +17,7 @@ const boost = () => S.fair ? {} : boostsFrom(S.progress);
 
 function recompute() {
   const b = boost();
-  const allowed = RULES[S.rules].modes;
+  const allowed = allowedModes(S.rules);
   S.legs = finalizeLegs(S.pts.slice(1).map((p, k) => evalLeg(p.mode, S.pts[k].ll, p.ll, b)), S.seed);
   for (const l of S.legs) if (!allowed.includes(l.mode) && !l.error) l.error = `${MODES[l.mode].name} isn't allowed in ${RULES[S.rules].name}. Tap the line and pick another way to travel.`;
   S.lines = linesOf(S.legs, S.pts);
@@ -29,52 +29,142 @@ const legPts = l => MODES[l.mode].terrain === 'space' ? arc(l.a, l.b) : [l.a, l.
 const tripTotal = () => S.legs.reduce((s, l) => s + l.total, 0);
 const atEnd = () => S.pts.length > 1 && S.pts[S.pts.length - 1].end;
 
-// ---------- satellite imagery ----------
-// EOxCloudless Sentinel-2 mosaic in plain lat/lon tiles (the WGS84 tile set), which matches this map's projection,
-// so tiles draw straight onto the canvas. Level z has 2^(z+1) × 2^z tiles of 256 px, each 180/2^z degrees wide.
+// ---------- map layers: satellite and streets ----------
+// Satellite: EOxCloudless Sentinel-2 mosaic in plain lat/lon tiles (the WGS84 tile set), which matches this map's
+// projection, so tiles draw straight onto the canvas. Level z has 2^(z+1) × 2^z tiles of 256 px, each 180/2^z° wide.
 // Licence: CC BY-NC-SA 4.0, free for non-commercial use with the credit shown on the map (cloudless.eox.at).
-const SAT = window.VAMOS_SAT || {
-  tile: (z, r, c) => `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024/default/WGS84/${z}/${r}/${c}.jpg`,
-  maxZ: 13,
-  credit: '<a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)',
+// Streets: OpenStreetMap's standard tiles (Web Mercator), redrawn in strips so they line up with this flat map.
+// Their tile policy allows interactive use in apps with the credit shown; no bulk or offline downloading.
+const LAYERS = window.VAMOS_LAYERS || {
+  sat: { name: 'Satellite', proj: 'wgs84', maxZ: 13, tile: (z, r, c) => `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024/default/WGS84/${z}/${r}/${c}.jpg`,
+    credit: '<a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)' },
+  streets: { name: 'Streets', proj: 'merc', maxZ: 18, tile: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`,
+    credit: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' },
 };
-const MAX_PPD = 1500;  // about 75 m per screen pixel: a broad look at the scenery, not street level
-const SAT_FROM = 10;   // the built-in relief map is sharp enough below this zoom (pixels per degree)
-let satPref = true; try { satPref = localStorage.getItem('vamos.sat') !== 'off'; } catch {}
-const satTiles = new Map();
-const satOn = () => satPref && S.view.ppd >= SAT_FROM;
-let satQueued = false;
-function satRedraw() { if (!satQueued) { satQueued = true; requestAnimationFrame(() => { satQueued = false; draw(); }); } }
-function satTile(z, r, c) {
-  const k = `${z}/${r}/${c}`;
-  let t = satTiles.get(k);
+const MAX_PPD = 12000; // about 9 m per screen pixel, the satellite imagery's full detail
+const TILES_FROM = 10; // the built-in relief map is sharp enough below this zoom (pixels per degree)
+let layer = 'sat'; try { layer = localStorage.getItem('vamos.layer') || 'sat'; } catch {}
+if (layer !== 'relief' && !LAYERS[layer]) layer = 'sat';
+const tiles = new Map();
+let redrawQueued = false;
+function queueDraw() { if (!redrawQueued) { redrawQueued = true; requestAnimationFrame(() => { redrawQueued = false; draw(); }); } }
+function getTile(L, z, a, b) {
+  const k = `${L}/${z}/${a}/${b}`;
+  let t = tiles.get(k);
   if (!t) {
     t = { img: new Image(), ok: false };
-    t.img.onload = () => { t.ok = true; satRedraw(); };
-    t.img.onerror = () => { t.bad = true; };
-    t.img.src = SAT.tile(z, r, c);
-    satTiles.set(k, t);
-    if (satTiles.size > 600) satTiles.delete(satTiles.keys().next().value); // forget the oldest tiles
+    t.img.onload = () => { t.ok = true; queueDraw(); };
+    t.img.src = LAYERS[L].tile(z, a, b);
+    tiles.set(k, t);
+    if (tiles.size > 800) tiles.delete(tiles.keys().next().value); // forget the oldest tiles
   }
   return t;
 }
-function drawSat() {
-  const z = Math.max(0, Math.min(SAT.maxZ, Math.ceil(Math.log2(S.view.ppd * DPR * 180 / 256))));
-  const span = 180 / 2 ** z, [la0, lo0] = toLL(0, 0), [la1, lo1] = toLL(W, H);
-  const r0 = Math.max(0, Math.floor((90 - la0) / span)), r1 = Math.min(2 ** z - 1, Math.floor((90 - la1) / span));
-  const c0 = Math.max(0, Math.floor((lo0 + 180) / span)), c1 = Math.min(2 ** (z + 1) - 1, Math.floor((lo1 + 180) / span));
+const mercLat = (y, n) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+const mercY = (lat, n) => { const r = Math.max(-85.05, Math.min(85.05, lat)) * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n; };
+// Draws the active tile layer; returns how many tiles it drew.
+function drawTiles() {
+  const L = LAYERS[layer], v = S.view, [la0, lo0] = toLL(0, 0), [la1, lo1] = toLL(W, H);
   let drawn = 0;
-  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-    const [x, y] = toXY(90 - r * span, -180 + c * span), sz = span * S.view.ppd;
-    const t = satTile(z, r, c);
-    if (t.ok) { ctx.drawImage(t.img, x, y, sz + 0.5, sz + 0.5); drawn++; continue; }
-    // still loading: stretch the nearest coarser tile that has arrived
-    for (let up = 1; up <= 4 && z - up >= 0; up++) {
-      const pr = r >> up, pc = c >> up, p = satTiles.get(`${z - up}/${pr}/${pc}`);
-      if (p && p.ok) { const n = 2 ** up, s = 256 / n; ctx.drawImage(p.img, (c - pc * n) * s, (r - pr * n) * s, s, s, x, y, sz + 0.5, sz + 0.5); drawn++; break; }
+  if (L.proj === 'wgs84') {
+    const z = Math.max(0, Math.min(L.maxZ, Math.ceil(Math.log2(v.ppd * DPR * 180 / 256))));
+    const span = 180 / 2 ** z;
+    const r0 = Math.max(0, Math.floor((90 - la0) / span)), r1 = Math.min(2 ** z - 1, Math.floor((90 - la1) / span));
+    const c0 = Math.max(0, Math.floor((lo0 + 180) / span)), c1 = Math.min(2 ** (z + 1) - 1, Math.floor((lo1 + 180) / span));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const [x, y] = toXY(90 - r * span, -180 + c * span), sz = span * v.ppd, t = getTile(layer, z, r, c);
+      if (t.ok) { ctx.drawImage(t.img, x, y, sz + 0.5, sz + 0.5); drawn++; continue; }
+      for (let up = 1; up <= 4 && z - up >= 0; up++) { // still loading: stretch the nearest coarser tile that has arrived
+        const pr = r >> up, pc = c >> up, p = tiles.get(`${layer}/${z - up}/${pr}/${pc}`);
+        if (p && p.ok) { const n = 2 ** up, s = 256 / n; ctx.drawImage(p.img, (c - pc * n) * s, (r - pr * n) * s, s, s, x, y, sz + 0.5, sz + 0.5); drawn++; break; }
+      }
+    }
+  } else {
+    const z = Math.max(0, Math.min(L.maxZ, Math.ceil(Math.log2(v.ppd * DPR * 360 / 256)))), n = 2 ** z;
+    const x0 = Math.max(0, Math.floor((lo0 + 180) / 360 * n)), x1 = Math.min(n - 1, Math.floor((lo1 + 180) / 360 * n));
+    const y0 = Math.max(0, Math.floor(mercY(la0, n))), y1 = Math.min(n - 1, Math.floor(mercY(la1, n)));
+    const strips = z < 6 ? 16 : z < 10 ? 4 : 1; // Mercator stretches north–south, so slice tiles into bands
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      const t = getTile(layer, z, tx, ty); if (!t.ok) continue;
+      const xa = toXY(0, tx / n * 360 - 180)[0], xb = toXY(0, (tx + 1) / n * 360 - 180)[0];
+      for (let k = 0; k < strips; k++) {
+        const ya = toXY(mercLat(ty + k / strips, n), 0)[1], yb = toXY(mercLat(ty + (k + 1) / strips, n), 0)[1];
+        ctx.drawImage(t.img, 0, k * 256 / strips, 256, 256 / strips, xa, ya, xb - xa + 0.5, yb - ya + 0.5);
+      }
+      drawn++;
     }
   }
-  $('credit').hidden = !drawn;
+  return drawn;
+}
+
+// ---------- stop points and zones ----------
+// Ports (Natural Earth), famous balloon sites and the best paragliding hill nearby are shown as tap targets.
+// Picking dog sled or paraglider shades where that mode can go (snow, or hills to launch from).
+let PLACES = { ports: [], balloons: [] };
+const zoneCache = {};
+function zoneMask(kind) { // one pixel per grid cell
+  if (zoneCache[kind]) return zoneCache[kind];
+  const c = document.createElement('canvas'); c.width = G.C; c.height = G.R;
+  const g = c.getContext('2d'), im = g.createImageData(G.C, G.R), d = im.data;
+  for (let r = 0; r < G.R; r++) for (let q = 0; q < G.C; q++) {
+    const i = r * G.C + q, on = kind === 'sled' ? !terrainProblem('sled', i, cellLat(r), cellLon(q)) : isHill(i);
+    if (on) d.set(kind === 'sled' ? [225, 240, 255, 170] : [240, 130, 30, 110], i * 4);
+  }
+  g.putImageData(im, 0, 0); return zoneCache[kind] = c;
+}
+// Draws a whole-world image (360° × 180°), only the part on screen.
+function drawWorld(img, smooth) {
+  const k = img.width / 360, [la0, lo0] = toLL(0, 0), [la1, lo1] = toLL(W, H);
+  const sx = Math.max(0, Math.floor((lo0 + 180) * k)), sy = Math.max(0, Math.floor((90 - la0) * k));
+  const ex = Math.min(img.width, Math.ceil((lo1 + 180) * k)), ey = Math.min(img.height, Math.ceil((90 - la1) * k));
+  if (ex <= sx || ey <= sy) return;
+  const [dx, dy] = toXY(90 - sy / k, sx / k - 180), [dx2, dy2] = toXY(90 - ey / k, ex / k - 180);
+  ctx.imageSmoothingEnabled = smooth; ctx.drawImage(img, sx, sy, ex - sx, ey - sy, dx, dy, dx2 - dx, dy2 - dy); ctx.imageSmoothingEnabled = true;
+}
+function drawZones() {
+  const kind = S.mode === 'sled' ? 'sled' : S.mode === 'glide' ? 'glide' : null;
+  if (kind && !S.playing && allowedModes(S.rules).includes(S.mode)) drawWorld(zoneMask(kind), false);
+}
+function drawStops() {
+  S.markers = [];
+  if (!S.showStops || S.playing) return;
+  const allowed = allowedModes(S.rules), v = S.view, placed = [];
+  const put = (ll, icon, name) => {
+    const [x, y] = toXY(...ll);
+    if (x < -12 || y < -12 || x > W + 12 || y > H + 12 || placed.some(([a, b]) => (a - x) ** 2 + (b - y) ** 2 < 26 * 26)) return;
+    placed.push([x, y]); S.markers.push({ x, y, ll, name });
+    ctx.fillStyle = 'rgba(251,248,241,.92)'; ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fill(); ctx.strokeStyle = '#1c2a33'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.font = '14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#000'; ctx.fillText(icon, x, y + 1); ctx.textBaseline = 'alphabetic';
+  };
+  if (allowed.includes('balloon')) for (const b of PLACES.balloons) put([b[1], b[2]], '🎈', `${b[0]} (balloon site)`);
+  if (['ferry', 'sail', 'kayak'].some(m => allowed.includes(m))) {
+    const rank = v.ppd < 8 ? 4 : v.ppd < 20 ? 6 : 10; // only big ports when zoomed out
+    for (const p of PLACES.ports) if (p[3] <= rank) put([p[1], p[2]], '⚓', `${p[0]} (port)`);
+  }
+  if (allowed.includes('glide') && v.ppd >= 12) {
+    // the best launch hill in each block of cells, with blocks sized so markers sit about 70 px apart
+    const B = Math.max(1, Math.ceil(70 / (v.ppd * 0.25))), [la0, lo0] = toLL(0, 0), [la1, lo1] = toLL(W, H);
+    const r0 = Math.max(0, Math.floor((90 - la0) * 4 / B) * B), r1 = Math.min(G.R - 1, Math.floor((90 - la1) * 4));
+    const c0 = Math.max(0, Math.floor((lo0 + 180) * 4 / B) * B), c1 = Math.min(G.C - 1, Math.floor((lo1 + 180) * 4));
+    for (let br = r0; br <= r1; br += B) for (let bc = c0; bc <= c1; bc += B) {
+      let best = -1, bi = -1;
+      for (let r = br; r < Math.min(br + B, G.R); r++) for (let c = bc; c < Math.min(bc + B, G.C); c++) {
+        const i = r * G.C + c; if (isHill(i) && maxM(i) - elevM(i) > best) { best = maxM(i) - elevM(i); bi = i; }
+      }
+      if (bi >= 0) put([cellLat((bi / G.C) | 0), cellLon(bi % G.C)], '🪂', `Paragliding hill, peaks near ${maxM(bi).toLocaleString()} m`);
+    }
+  }
+}
+function stopAt(x, y) { let b = null, bd = 16 * 16; for (const m of S.markers) { const d = (m.x - x) ** 2 + (m.y - y) ** 2; if (d < bd) { bd = d; b = m; } } return b; }
+
+// ---------- characters ----------
+function renderChars() {
+  $('chars').innerHTML = Object.entries(CHARS).map(([k, c]) => `<button class="char" data-c="${k}" aria-pressed="${k === S.char}" title="${esc(c.power)}"><span>${c.icon}</span>${esc(c.name)}</button>`).join('');
+  $('charPower').textContent = `${CHARS[S.char].icon} ${CHARS[S.char].power}`;
+  $('chars').querySelectorAll('.char').forEach(b => b.onclick = () => {
+    S.char = b.dataset.c; setCharacter(S.char); try { localStorage.setItem('vamos.char', S.char); } catch {}
+    renderChars(); routeChanged();
+  });
 }
 
 // ---------- view / projection (equirectangular) ----------
@@ -125,11 +215,11 @@ function draw() {
   if (!W || !S.trip) return;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = '#cfe4ea'; ctx.fillRect(0, 0, W, H);
-  if (baseImg) {
-    const [x0, y0] = toXY(90, -180), [x1, y1] = toXY(-90, 180);
-    ctx.imageSmoothingEnabled = true; ctx.drawImage(baseImg, x0, y0, x1 - x0, y1 - y0);
-  }
-  if (satOn()) drawSat(); else $('credit').hidden = true;
+  if (baseImg) drawWorld(baseImg, true);
+  const tilesOn = layer !== 'relief' && S.view.ppd >= TILES_FROM;
+  const drawnTiles = tilesOn ? drawTiles() : 0;
+  $('credit').hidden = !drawnTiles; if (drawnTiles) $('credit').innerHTML = LAYERS[layer].credit;
+  drawZones();
   // borders
   ctx.strokeStyle = 'rgba(28,42,51,.35)'; ctx.lineWidth = 0.8; ctx.setLineDash([]); ctx.beginPath();
   for (const l of BORDERS) { let X = 0, Y = 0; for (let k = 0; k < l.length; k += 2) { X += l[k]; Y += l[k + 1]; const [x, y] = toXY(Y / 20, X / 20); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } }
@@ -146,6 +236,7 @@ function draw() {
     const M = MODES[r.mode];
     pathLine(M.terrain === 'space' ? arc(r.pts[0], r.pts[r.pts.length - 1]) : r.pts, M.color, [2, 3], 3);
   }
+  drawStops();
   if (S.challenge && S.finished && S.ghosts) drawGhosts();
   // player lines: a gold halo marks the one being edited, one badge per line shows its mode
   for (const L of S.lines) {
@@ -193,6 +284,10 @@ function drawTraveller(A) {
   if (swim) ctx.rotate(-1.35);
   // vehicle bubble behind the figure
   if (!human || A.mode === 'bike' || A.mode === 'skate' || A.mode === 'kayak') { ctx.font = '26px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(M.icon, 0, 10); }
+  if (S.char !== 'none') { // characters ride along as their emoji instead of the stick figure
+    ctx.font = '24px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(CHARS[S.char].icon, Math.sin(swing) * 2, -16); ctx.restore(); return;
+  }
   ctx.beginPath(); ctx.arc(0, -26, 5, 0, 7); ctx.fillStyle = '#fbf8f1'; ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0, -21); ctx.lineTo(0, -8);                       // body
   ctx.moveTo(0, -18); ctx.lineTo(Math.sin(swing) * 9, -10 + Math.cos(swing) * 2); // arm
@@ -206,13 +301,13 @@ function drawTraveller(A) {
 
 // ---------- UI ----------
 function renderModes() {
-  const allowed = RULES[S.rules].modes;
+  const allowed = allowedModes(S.rules);
   if (!allowed.includes(S.mode)) S.mode = allowed[0];
   const b = boost(), num = v => +v.toFixed(v < 1 ? 2 : 1);
   $('modes').innerHTML = MODE_KEYS.filter(m => allowed.includes(m)).map(m => {
-    const M = MODES[m], up = Math.round((b[m] || 0) * 100);
+    const M = MODES[m], up = Math.round(totalBoost(b, m) * 100);
     const sp = M.terrain === 'space' ? `${M.setup}h prep` : m === 'balloon' ? 'wind-powered' : m === 'sail' ? '4–18 km/h · wind' :
-      m === 'cannon' ? '300 m a shot · 2h reload' : `${num(M.speed * (1 + (b[m] || 0)))} km/h · ${M.hours}h/day`;
+      m === 'cannon' ? '300 m a shot · 2h reload' : `${num(M.speed * (1 + totalBoost(b, m)))} km/h · ${hoursPerDay(m, 0)}h/day`;
     return `<button class="mode" aria-pressed="${m === S.mode}" data-m="${m}"><span class="ic">${M.icon}</span>${M.name}<span class="sp">${sp}${up ? ` <b class="up">+${up}%</b>` : ''}</span><span class="sw" style="background:${M.color}"></span></button>`;
   }).join('');
   $('modes').querySelectorAll('.mode').forEach(b => b.onclick = () => {
@@ -285,16 +380,31 @@ function snapEnd(ll) {
   return toEnd < 60 || (near < 12 && toEnd < 250);
 }
 // Adds one line through the given stops (one stop for a tap, several for a freehand stroke).
-function addLine(lls) {
+// Taps auto-stop at the limit; a freehand stroke keeps the shape you drew (pick its mode afterwards).
+function addLine(lls, freehand) {
   if (S.playing || atEnd() || !lls.length) return;
   const m = S.mode, M = MODES[m], id = S.nextLine++;
   if (M.terrain === 'space') { const s = nearestSite(...lls[lls.length - 1]).site; lls = [[s[1], s[2]]]; }
-  for (const ll of lls) {
-    if (M.terrain !== 'space' && snapEnd(ll)) { S.pts.push({ ll: S.trip.b, mode: m, line: id, end: true }); break; }
-    S.pts.push({ ll, mode: m, line: id });
+  let prev = S.pts[S.pts.length - 1].ll, msg = '';
+  for (let ll of lls) {
+    const end = M.terrain !== 'space' && snapEnd(ll); if (end) ll = S.trip.b;
+    if (M.terrain !== 'space' && !freehand) { // auto-stop: go as far as this mode can, then stop at the edge
+      const c = clipLeg(m, prev, ll, end);
+      if (!c) { msg = evalLeg(m, prev, ll).error || `${M.name} can't go that way from here.`; break; }
+      if (c.clipped) { S.pts.push({ ll: c.ll, mode: m, line: id }); msg = STOP_TEXT[c.why] ? STOP_TEXT[c.why](m) : `${PROBLEM_TEXT[c.why](m)} Stopped just before it.`; break; }
+    }
+    if (end) { S.pts.push({ ll, mode: m, line: id, end: true }); break; }
+    S.pts.push({ ll, mode: m, line: id }); prev = ll;
   }
+  if (msg) toast(msg, 3600);
   S.sel = null; routeChanged();
 }
+const STOP_TEXT = {
+  land: m => `${MODES[m].name} stopped at the coast. Pick a way to travel on land to carry on.`,
+  water: m => `${MODES[m].name} stopped at the water's edge. Switch to a boat or swim to cross.`,
+  edge: m => MODES[m].terrain === 'water' ? `${MODES[m].name} stopped at the coast. Pick a way to travel on land to carry on.` : `${MODES[m].name} stopped at the water's edge. Switch to a boat or swim to cross.`,
+  limit: () => 'Paragliders fly about 150 km a day, so you landed there. Walk to another 🪂 hill to launch again.',
+};
 const addPoint = ll => addLine([ll]);
 // Screen distance from (x, y) to the nearest line, for tapping a line to select it.
 function lineAt(x, y) {
@@ -321,7 +431,7 @@ function getWorker() {
   return worker;
 }
 function solveAsync(a, b, modes, boost) {
-  return new Promise(res => { const w = getWorker(), id = Math.random(); const h = e => { if (e.data.id === id) { w.removeEventListener('message', h); res(e.data.r); } }; w.addEventListener('message', h); w.postMessage({ id, a, b, modes, boost }); });
+  return new Promise(res => { const w = getWorker(), id = Math.random(); const h = e => { if (e.data.id === id) { w.removeEventListener('message', h); res(e.data.r); } }; w.addEventListener('message', h); w.postMessage({ id, a, b, modes, boost, char: S.char }); });
 }
 
 // ---------- playback ----------
@@ -330,7 +440,7 @@ async function go() {
   if (!atEnd()) return;
   S.playing = true; renderLegs();
   const rules = RULES[S.rules];
-  const bestP = solveAsync(S.trip.a, S.trip.b, rules.modes, boost());
+  const bestP = solveAsync(S.trip.a, S.trip.b, allowedModes(S.rules), boost());
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   $('clock').hidden = false;
   let clock = 0;
@@ -379,7 +489,7 @@ function showResult(best) {
     earned = r.newBadges.map(B => `<li>${B.icon} New badge: <b>${B.name}</b></li>`).join('') +
       r.gains.map(x => `<li>${MODES[x.mode].icon} ${MODES[x.mode].name} stat up to +${x.to}%${S.fair ? ' (used when Fair mode is off)' : ''}</li>`).join('');
   }
-  const share = `Vamos ${S.challenge ? '⚔️ challenge' : S.tripNo ? '#' + S.tripNo : '(practice)'} · ${rules.name} · ${S.fair ? 'Fair mode' : 'Stats on'}\n${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]}\n${icons.join('')} ${fmtH(you)}\nBest route ${par ? fmtH(par) : '—'} · Grade ${g}`;
+  const share = `Vamos ${S.challenge ? '⚔️ challenge' : S.tripNo ? '#' + S.tripNo : '(practice)'} · ${rules.name} · ${S.fair ? 'Fair mode' : 'Stats on'}\n${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]}\n${S.char !== 'none' ? CHARS[S.char].icon + ' ' : ''}${icons.join('')} ${fmtH(you)}\nBest route ${par ? fmtH(par) : '—'} · Grade ${g}`;
   const bestLine = best ? best.runs.filter(r => r.km >= 5 || MODES[r.mode].terrain === 'space').map(r => `${MODES[r.mode].icon} ${fmtKm(r.km)}`).join(' → ') : 'No route exists under these rules.';
   const note = g === 'A+' ? 'You beat the computer. Its route assumes full rest days, so short hops can sneak under it.' : '';
   $('result').innerHTML = `<div class="result">
@@ -399,7 +509,7 @@ function showResult(best) {
     <div class="row"><button class="btn" id="copy">Copy result</button><button class="btn" id="toggleBest">${S.showBest ? 'Hide' : 'Show'} best route</button><button class="btn" id="again">Try again</button></div>
   </div>`;
   $('result').hidden = false;
-  const mine = !dq && S.fair ? { n: myName(), h: you, g, p: encodeRoute(S.pts) } : null;
+  const mine = !dq && S.fair ? { n: myName(), h: you, g, p: encodeRoute(S.pts), c: S.char } : null;
   if (S.challenge && mine) { S.challenge.res = mergeResults(S.challenge.res, [mine]); saveBoard(S.challenge); }
   S.finished = true; renderChallenge(); draw();
   $('myName').oninput = e => { try { localStorage.setItem('vamos.name', e.target.value.trim()); } catch {} if (mine && S.challenge) { mine.n = myName(); saveBoard(S.challenge); renderChallenge(); } };
@@ -444,7 +554,7 @@ function renderChallenge() {
   const me = myName().toLowerCase(), top = c.res[0];
   el.innerHTML = `<div class="label">⚔️ Challenge · ${esc(RULES[c.r].name)} · Fair mode</div>
     <p class="hint">${top ? `Beat ${esc(top.n)}'s ${fmtH(top.h)}.` : 'Be the first on the board.'} ${S.finished ? '' : 'Friends\' routes show once you finish.'}</p>
-    ${c.res.length ? `<ol class="board">${c.res.map((r, k) => `<li class="${r.n.toLowerCase() === me ? 'me' : ''}"><span>${['🥇', '🥈', '🥉'][k] || k + 1}</span><span>${S.finished && r.p ? `<i style="background:${GHOST[k % GHOST.length]}"></i>` : ''}${esc(r.n)}</span><span class="t">${fmtH(r.h)} · ${r.g}</span></li>`).join('')}</ol>` : ''}
+    ${c.res.length ? `<ol class="board">${c.res.map((r, k) => `<li class="${r.n.toLowerCase() === me ? 'me' : ''}"><span>${['🥇', '🥈', '🥉'][k] || k + 1}</span><span>${S.finished && r.p ? `<i style="background:${GHOST[k % GHOST.length]}"></i>` : ''}${r.c && r.c !== 'none' ? CHARS[r.c].icon + ' ' : ''}${esc(r.n)}</span><span class="t">${fmtH(r.h)} · ${r.g}</span></li>`).join('')}</ol>` : ''}
     ${S.finished && c.res.some(r => r.p) ? `<label class="fair"><input type="checkbox" id="ghosts" ${S.ghosts ? 'checked' : ''}><span>Show everyone's routes</span></label>` : ''}`;
   if ($('ghosts')) $('ghosts').onchange = e => { S.ghosts = e.target.checked; draw(); };
 }
@@ -504,8 +614,9 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => {
   const [la, lo] = toLL(e.offsetX, e.offsetY);
   if (e.pointerType === 'mouse' && la > -90 && la < 90) {
-    const i = cellOf(la, lo), land = isLand(i);
+    const i = cellOf(la, lo), land = isLand(i), st = stopAt(e.offsetX, e.offsetY);
     $('hover').hidden = false;
+    if (st) { $('hover').textContent = `${st.name} · click to stop here`; } else
     $('hover').textContent = `${fmtLL(la, lo)} · ${land ? `land · ~${elevM(i).toLocaleString()} m${roughM(i) > 250 ? ' · mountains' : roughM(i) > 100 ? ' · hilly' : ''}` : isLake(i) ? 'lake' : 'water'}`;
   }
   if (!ptrs.has(e.pointerId)) return;
@@ -527,12 +638,14 @@ function endPtr(e) {
   const tap = drag && !drag.moved && ptrs.size === 1 && e.type === 'pointerup';
   if (S.stroke) {
     const st = S.stroke; S.stroke = null;
-    if (drag && drag.moved && e.type === 'pointerup') { addLine(simplifyPath(st, 6).slice(1).filter((p, k, a) => k === a.length - 1 || Math.hypot(p[0] - a[k + 1][0], p[1] - a[k + 1][1]) > 8).map(p => toLL(...p))); }
+    const lastStop = stopAt(...st[st.length - 1]); if (lastStop) st[st.length - 1] = toXY(...lastStop.ll); // a stroke ending on a stop snaps to it
+    if (drag && drag.moved && e.type === 'pointerup') { addLine(simplifyPath(st, 6).slice(1).filter((p, k, a) => k === a.length - 1 || Math.hypot(p[0] - a[k + 1][0], p[1] - a[k + 1][1]) > 8).map(p => toLL(...p)), true); }
     else draw();
   }
   if (tap && S.picking) pickPlace(toLL(e.offsetX, e.offsetY));
   else if (tap) {
-    const hit = lineAt(e.offsetX, e.offsetY);
+    const st = stopAt(e.offsetX, e.offsetY), hit = st ? null : lineAt(e.offsetX, e.offsetY);
+    if (st && S.sel == null) { addPoint(st.ll); ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!ptrs.size) drag = null; return; }
     if (hit != null) selectLine(hit);
     else if (S.sel != null) selectLine(S.sel); // tapping empty map ends editing
     else addPoint(toLL(e.offsetX, e.offsetY));
@@ -545,15 +658,16 @@ cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.delta
 $('zin').onclick = () => zoomAt(1.5, W / 2, H / 2);
 $('zout').onclick = () => zoomAt(1 / 1.5, W / 2, H / 2);
 $('zfit').onclick = fitTrip;
-$('sat').onclick = () => {
-  satPref = !satPref; try { localStorage.setItem('vamos.sat', satPref ? 'on' : 'off'); } catch {}
-  $('sat').setAttribute('aria-pressed', satPref);
-  if (satPref && S.view.ppd < SAT_FROM) toast('Zoom in to see satellite imagery');
+$('sat').onclick = () => { const open = $('layerMenu').hidden; $('layerMenu').hidden = !open; $('lookMenu').hidden = true; $('sat').setAttribute('aria-expanded', open); draw(); };
+$('layerMenu').querySelectorAll('input[name=layer]').forEach(r => r.onchange = () => {
+  layer = r.value; try { localStorage.setItem('vamos.layer', layer); } catch {}
+  if (layer !== 'relief' && S.view.ppd < TILES_FROM) toast(`Zoom in to see ${LAYERS[layer].name.toLowerCase()}`);
   draw();
-};
+});
+$('showStops').onchange = e => { S.showStops = e.target.checked; draw(); };
 // Look around: opens Google Maps at the middle of the map (Maps URLs need no API key).
 $('look').onclick = () => {
-  const open = $('lookMenu').hidden; $('lookMenu').hidden = !open; $('look').setAttribute('aria-expanded', open);
+  const open = $('lookMenu').hidden; $('lookMenu').hidden = !open; $('layerMenu').hidden = true; $('look').setAttribute('aria-expanded', open);
   if (open) { const [la, lo] = toLL(W / 2, H / 2), ll = `${la.toFixed(5)}%2C${lo.toFixed(5)}`, z = Math.round(Math.max(3, Math.min(18, Math.log2(S.view.ppd * 360 / 256))));
     $('lookSV').href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`;
     $('lookSat').href = `https://www.google.com/maps/@?api=1&map_action=map&center=${ll}&zoom=${z}&basemap=satellite`; }
@@ -581,11 +695,12 @@ async function loadAssets() {
   let bytes, baseSrc;
   if (inline) {
     bytes = Uint8Array.from(atob(inline.grid), c => c.charCodeAt(0));
-    baseSrc = inline.base; BORDERS = inline.borders;
+    baseSrc = inline.base; BORDERS = inline.borders; PLACES = inline.places || PLACES;
   } else {
-    const [g, b] = await Promise.all([fetch('data/grid.bin'), fetch('data/borders.json')]);
+    const [g, b, pl] = await Promise.all([fetch('data/grid.bin'), fetch('data/borders.json'), fetch('data/places.json')]);
     if (!g.ok || !b.ok) throw new Error('Map data failed to load');
     bytes = new Uint8Array(await g.arrayBuffer()); BORDERS = await b.json();
+    if (pl.ok) PLACES = await pl.json(); // stop points are a nice extra; the game works without them
     baseSrc = 'data/basemap.webp';
   }
   GRIDBUF = await gunzipIfNeeded(bytes);
@@ -596,8 +711,10 @@ async function loadAssets() {
   try { await loadAssets(); }
   catch (err) { $('hint').textContent = 'The map data did not load. Check your connection and reload the page.'; return; }
   $('rulesNote').textContent = RULES[S.rules].note;
-  $('credit').innerHTML = SAT.credit; $('sat').setAttribute('aria-pressed', satPref);
+  const lr = $('layerMenu').querySelector(`input[value="${layer}"]`); if (lr) lr.checked = true;
   S.progress = loadProgress();
+  try { S.char = CHARS[localStorage.getItem('vamos.char')] ? localStorage.getItem('vamos.char') : 'none'; } catch {}
+  setCharacter(S.char); renderChars();
   renderModes();
   resize();
   const d = dailyTrip(Date.now());

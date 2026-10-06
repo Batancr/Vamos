@@ -6,7 +6,10 @@ Live site (once GitHub Pages is on): https://batancr.github.io/Vamos/
 
 ## How it plays
 - Draw your route as lines: tap to add stops, or press ✏️ and drag to draw freehand. Tap any line (on the map or in the list) to change how you travel it.
-- Zoom in and the map switches to satellite imagery (🛰️ turns it off). 🔭 opens Google Street View or Google's satellite map at the middle of the map.
+- Zoom in (down to about 9 m per pixel) and the map switches to satellite imagery; 🛰️ swaps it for streets and roads (OpenStreetMap) or the plain relief map, and turns stop points on or off.
+- **Stops:** ⚓ ports, 🪂 paragliding hills and 🎈 balloon sites are tap targets. Picking dog sled or paraglider shades where it can go.
+- **Auto-stop:** aim a leg too far and it stops at the limit, for example a boat stops at the coast and a car stops at the water's edge, so you can switch mode and carry on.
+- **Characters:** Traveller, Fox, Mountaineer, Mermaid, Genie, Thunder God, Caped Hero, Star Knight, Relic Hunter and Web Slinger, each with a power. The best route uses your character too. All free for now. 🔭 opens Google Street View or Google's satellite map at the middle of the map.
 - **Challenge friends:** after a trip, send a link. Friends play the same trip in Fair mode and send theirs back, and everyone who plays lands on one leaderboard, with their routes shown once you finish. **Custom** lets you tap any start and finish and name them.
 - There's a new trip every day ("Trip #N"), plus random practice trips.
 - Rule sets: Classic, Human power, Triathlon, No wheels, Balloonatic, Rocket Man, Silly season.

@@ -232,7 +232,9 @@ test('challenge links round-trip, with times rounded to 0.01 h and accents kept'
   const c = V.decodeChallenge(V.encodeChallenge(CH));
   assert.deepStrictEqual(c.f, CH.f);
   assert.strictEqual(c.r, 'classic'); assert.strictEqual(c.s, 4242);
-  assert.deepStrictEqual(c.res, [{ n: 'Alex', h: 301.23, g: 'F', p: CH.res[0].p }]);
+  assert.deepStrictEqual(c.res, [{ n: 'Alex', h: 301.23, g: 'F', p: CH.res[0].p, c: 'none' }]);
+  const withChars = V.decodeChallenge(V.encodeChallenge({ ...CH, res: [{ n: 'Fox fan', h: 5, g: 'A', c: 'fox' }, { n: 'Sneaky', h: 6, g: 'A', c: 'toString' }] }));
+  assert.deepStrictEqual(withChars.res.map(r => r.c), ['fox', 'none']); // unknown characters fall back to the plain traveller
   assert.ok(!/[+/=]/.test(V.encodeChallenge(CH))); // safe to paste in a URL
 });
 test('challenge links reject junk and bad fields', () => {
@@ -242,7 +244,7 @@ test('challenge links reject junk and bad fields', () => {
   assert.strictEqual(bad({ f: ['X', 95, 0] }), null);          // latitude past the pole
   assert.strictEqual(bad({ id: '<script>' }), null);
   const c = bad({ res: [{ n: 'Sam', h: -5, g: 'A' }, { n: 'x'.repeat(99), h: 10, g: 'Z' }, { n: 'Kim', h: 50, g: 'B', p: 'nope' }] });
-  assert.deepStrictEqual(c.res, [{ n: 'Kim', h: 50, g: 'B', p: '' }]); // negative time and unknown grade dropped, bad route blanked
+  assert.deepStrictEqual(c.res, [{ n: 'Kim', h: 50, g: 'B', p: '', c: 'none' }]); // negative time and unknown grade dropped, bad route blanked
 });
 test('routes encode to 2 decimals and decode back to stops with modes and lines', () => {
   const pts = [{ ll: [64.15, -21.94] }, { ll: [64.004, -23.296], mode: 'sail', line: 1 }, { ll: [38.72, -9.14], mode: 'walk', line: 2 }];
@@ -254,6 +256,66 @@ test('routes encode to 2 decimals and decode back to stops with modes and lines'
 test('leaderboard keeps each player\'s best time, fastest first', () => {
   const r = V.mergeResults([{ n: 'Alex', h: 30 }, { n: 'Sam', h: 20 }], [{ n: 'alex', h: 25 }, { n: 'Kim', h: 40 }]);
   assert.deepStrictEqual(r.map(x => [x.n, x.h]), [['Sam', 20], ['alex', 25], ['Kim', 40]]);
+});
+
+// ---------- auto-stop ----------
+test('auto-stop: a boat aimed at London stops at the English coast, and that leg is valid', () => {
+  const c = V.clipLeg('ferry', [50.5, -1.0], [51.5, -0.12]);
+  assert.ok(c.clipped && c.why === 'land');
+  assert.ok(c.ll[0] > 50.6 && c.ll[0] < 50.9, `stopped at ${c.ll}`); // the Sussex coast is near 50.8°N
+  assert.strictEqual(V.evalLeg('ferry', [50.5, -1.0], c.ll).error, null);
+});
+test('auto-stop: an all-sea boat leg is left alone', () => {
+  const c = V.clipLeg('ferry', [50.5, -1.0], [50.0, -3.0]);
+  assert.deepStrictEqual(c, { ll: [50.0, -3.0], clipped: false });
+});
+test('auto-stop: driving Paris → London stops where the Channel starts', () => {
+  const c = V.clipLeg('car', [48.86, 2.35], [51.5, -0.12]);
+  assert.strictEqual(c.why, 'water');
+  assert.strictEqual(V.evalLeg('car', [48.86, 2.35], c.ll).error, null);
+});
+test('auto-stop: a 283 km paraglide is cut to the 150 km limit', () => {
+  const c = V.clipLeg('glide', [46.68, 7.86], [48.5, 10.5]);
+  assert.strictEqual(c.why, 'limit');
+  near(V.hav(46.68, 7.86, ...c.ll), 150, 1);
+});
+test('auto-stop: a boat may still finish at a coastal city just inland (the 15 km dock grace)', () => {
+  assert.strictEqual(V.clipLeg('ferry', [45, -15], [38.72, -9.14], true).clipped, false); // finishing in Lisbon
+});
+test('auto-stop: a car pointed straight out to sea can\'t start at all', () => {
+  assert.strictEqual(V.clipLeg('car', [50.0, -3.0], [49.0, -6.0]), null);
+});
+
+// ---------- characters ----------
+test('characters: Fox runs 15 km/h; Mermaid swims 20 km/h all day even in cold water', () => {
+  try {
+    V.setCharacter('fox'); assert.strictEqual(V.speedAt('run', 0, 0, 0), 15); // 10 × 1.5
+    V.setCharacter('mermaid'); near(V.speedAt('swim', 0, 0, 0), 20, 1e-9); assert.strictEqual(V.hoursPerDay('swim', 60), 24);
+  } finally { V.setCharacter('none'); }
+});
+test('characters: Mountaineer skips altitude sickness; Star Knight never waits for a lift', () => {
+  try {
+    V.setCharacter('climber'); assert.strictEqual(V.finalizeLegs([V.evalLeg('walk', [27.7, 85.32], [27.99, 86.93])])[0].extra, 0);
+    V.setCharacter('knight'); assert.strictEqual(V.finalizeLegs([V.evalLeg('hitch', [40, -100], [40, -95])], 5)[0].setup, 0);
+  } finally { V.setCharacter('none'); }
+});
+test('characters: Genie\'s carpet crosses the Atlantic; flying modes only come with their character', () => {
+  try {
+    V.setCharacter('genie');
+    assert.strictEqual(V.evalLeg('carpet', [40, -70], [50, -5]).error, null);
+    assert.ok(V.allowedModes('human').includes('carpet'));
+    V.setCharacter('none');
+    assert.ok(!V.allowedModes('classic').includes('carpet') && !V.allowedModes('classic').includes('fly'));
+    V.setCharacter('relic'); assert.strictEqual(V.gapOf('walk'), 13); assert.strictEqual(V.gapOf('ferry'), 25); // whip only helps on land
+  } finally { V.setCharacter('none'); }
+});
+test('characters: the best route uses the character too (Caped Hero just flies)', () => {
+  try {
+    V.setCharacter('caped');
+    const r = V.solveRoute([57.48, -4.22], [31.63, -7.99], V.allowedModes('classic'));
+    assert.deepStrictEqual(r.runs.map(x => x.mode), ['fly']);
+    assert.ok(r.hours < 4, `got ${r.hours}`); // about 2,900 km at 1,000 km/h
+  } finally { V.setCharacter('none'); }
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

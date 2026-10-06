@@ -9,6 +9,10 @@
 
 | Satellite imagery (loaded live, not stored in the repo) | EOxCloudless Sentinel-2 2024, WMTS `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024/default/WGS84/{z}/{row}/{col}.jpg` | CC BY-NC-SA 4.0 for non-commercial use; credit "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)" must be visible (https://cloudless.eox.at/documentation/license, checked 6 Oct 2026) | The satellite layer when zoomed in |
 
+| Ports | Natural Earth 1:10m ports (`ne_10m_ports.geojson`) from https://github.com/nvkelso/natural-earth-vector | Public domain (Natural Earth). **To verify.** | `docs/data/places.json` (built by `tools/build_places.py`) |
+| Balloon sites | Typed in by hand in `tools/build_places.py` | — (coordinates approximate, recalled) | `docs/data/places.json` |
+| Streets (loaded live) | OpenStreetMap standard tiles `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | © OpenStreetMap contributors, ODbL; tile usage policy applies | Streets layer |
+
 Lakes skipped on purpose (`DRY` in `tools/build_data.py`): Australian salt pans that are dry most of the time (Lake Eyre North and South, Frome, Gairdner, Torrens, Mackay, Disappointment, Barlee).
 
 `tools/build_data.py` downloads the 256 tiles (about 18 MB) into `data/raw/tiles/`, and the lakes file into `data/raw/`. Both are git-ignored.

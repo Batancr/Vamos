@@ -16,6 +16,7 @@ inline = {
     'grid': base64.b64encode(read('data/grid.bin', 'rb')).decode(),
     'base': 'data:image/webp;base64,' + base64.b64encode(read('data/basemap.webp', 'rb')).decode(),
     'borders': json.loads(read('data/borders.json')),
+    'places': json.loads(read('data/places.json')),
     'physSrc': phys,
     'workerSrc': worker,
 }
