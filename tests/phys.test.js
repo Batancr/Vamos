@@ -346,4 +346,52 @@ test('terrain characters: a Rabbit\'s best walk across the Great Plains is about
   } finally { V.setCharacter('none'); }
 });
 
+// ---------- danger: accidents and energy ----------
+const plan = (mode, a, b, key, custom) => { const legs = V.finalizeLegs([V.evalLeg(mode, a, b)], 7); return { legs, r: V.applyDanger(legs, 7, V.dangerOf(key, custom), false) }; };
+test('danger Off changes nothing: no energy, no risk, same time', () => {
+  const legs = V.finalizeLegs([V.evalLeg('car', [48.85, 2.35], [45.76, 4.84])], 7), before = legs[0].total;
+  const r = V.applyDanger(legs, 7, V.dangerOf('off'), true);
+  assert.deepStrictEqual([r.energy, r.dead, r.incidents.length, legs[0].total], [100, null, 0, before]);
+});
+test('energy: a 200 km swim kills on Hard and costs a 24h collapse on Medium', () => {
+  // 2.4 km/h × 8h = 19 km a day; each day uses 8 × 8 = 64% and a night gives back 16 × 2.5 = 40%, so 24% down a day
+  const hard = plan('swim', [38, 5], [38, 7.3], 'hard'), med = plan('swim', [38, 5], [38, 7.3], 'medium');
+  assert.ok(hard.r.dead && /exhaustion/.test(hard.r.dead.why), JSON.stringify(hard.r));
+  assert.ok(!med.r.dead && med.legs[0].events.some(e => /Collapsed/.test(e)), med.legs[0].events.join('; '));
+});
+test('energy: walking 290 km on Hard is fine (30% a day used, 35% back each night)', () => {
+  const { r } = plan('walk', [48.85, 2.35], [46.2, 2.35], 'hard');
+  assert.ok(!r.dead && r.energy > 50, JSON.stringify(r));
+});
+test('energy: crossing the Sahara on foot on Hard kills a Traveller but not a Camel', () => {
+  // desert heat: 3 × 1.6 = 4.8% an hour, 48% a day against 35% back
+  assert.ok(plan('walk', [25, 0], [25, 5], 'hard').r.dead);
+  try { V.setCharacter('camel'); assert.ok(!plan('walk', [25, 0], [25, 5], 'hard').r.dead); } finally { V.setCharacter('none'); }
+});
+test('accidents: the same seed and route give the same luck; zero odds give none', () => {
+  const run = (seed, key, custom) => { const legs = V.finalizeLegs([V.evalLeg('car', [40, -100], [40, -90])], seed); return V.applyDanger(legs, seed, V.dangerOf(key, custom), true).incidents.map(i => i.t + i.h); };
+  assert.deepStrictEqual(run(11, 'nightmare'), run(11, 'nightmare'));
+  assert.deepStrictEqual(run(11, 'custom', { base: 'nightmare', g: 0, m: {} }), []);
+  // over many seeds, a long Nightmare drive has accidents sometimes, not always
+  let any = 0; for (let s = 1; s <= 200; s++) if (run(s, 'nightmare').length) any++;
+  assert.ok(any > 20 && any < 200, `accidents on ${any} of 200 seeds`);
+});
+test('accidents: Easy only has hiccups; a car never crashes below Medium', () => {
+  const l = V.finalizeLegs([V.evalLeg('car', [40, -100], [40, -90])], 1)[0];
+  assert.deepStrictEqual(V.hazardsFor(l, V.dangerOf('easy')).map(x => x.H.t), ['🛞 Flat tyre']);
+  assert.strictEqual(V.hazardsFor(l, V.dangerOf('medium')).length, 2);
+});
+test('danger travels in challenge links, and junk custom odds are cleaned', () => {
+  const c = { v: 1, id: 'abcd1234', f: ['A', 10, 10], t: ['B', 20, 20], r: 'classic', s: 5, d: 'custom', dc: { base: 'hard', g: 9, m: { car: 2, nope: 1 } }, res: [] };
+  const back = V.decodeChallenge(V.encodeChallenge(c));
+  assert.deepStrictEqual([back.d, back.dc], ['custom', { base: 'hard', g: 3, m: { car: 2 } }]);
+  assert.strictEqual(V.decodeChallenge(V.encodeChallenge({ ...c, d: 'nightmare', dc: null })).d, 'nightmare');
+});
+test('Zoo Bonanza: a camel ride goes 8 km/h in the Sahara and 4 elsewhere; horses avoid Tibet', () => {
+  assert.strictEqual(V.speedAt('camelride', V.cellOf(23, 10), 23, 0), 8);
+  assert.strictEqual(V.speedAt('camelride', V.cellOf(48.85, 2.35), 48.85, 0), 4);
+  assert.ok(/3,000 m/.test(V.evalLeg('horse', [31.5, 85], [31.5, 90]).error));
+  assert.ok(V.RULES.zoo.modes.every(m => V.MODES[m]));
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

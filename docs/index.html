@@ -93,6 +93,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
 .result { border: 2px solid var(--ink); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: #fff; }
 .grade { display: flex; align-items: center; gap: 12px; }
 .grade .g { font-family: var(--display); font-size: 40px; color: var(--stamp); border: 3px solid var(--stamp); border-radius: 50%; width: 64px; height: 64px; display: grid; place-items: center; transform: rotate(-8deg); flex: none; }
+.grade .g.small { font-size: 22px; }
 .cmp { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 14px; }
 .cmp .t { font: 500 14px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
 .share { font: 500 12.5px var(--mono); white-space: pre-wrap; background: var(--sea); padding: 8px; border-radius: 6px; margin: 0; user-select: all; }
@@ -151,6 +152,16 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
 .ranked small { color: var(--muted); }
 .pname { margin: 0; font-family: var(--display); font-weight: 400; font-size: 20px; }
 .badgeline { font-size: 22px; margin: 0; line-height: 1.5; }
+.slide { display: grid; grid-template-columns: 110px 1fr 46px; gap: 8px; align-items: center; font-size: 13.5px; margin-top: 6px; }
+.slide input { accent-color: var(--stamp); width: 100%; }
+.slide b { font: 500 12px var(--mono); text-align: right; }
+.energy { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.energy .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.energy .bar i { display: block; height: 100%; background: var(--ok); }
+.energy.low .bar i { background: var(--stamp); }
+.legs li .risk { font-weight: 700; color: var(--ink); }
+.legs li.dead .why { color: var(--stamp); font-weight: 700; }
+.incidents { margin: 0; padding-left: 18px; font-size: 13.5px; }
 .foot { font-size: 11.5px; color: var(--muted); margin-top: auto; }
 .foot a { color: var(--muted); }
 @media (max-width: 760px) {
@@ -227,6 +238,18 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
         <input class="txt" id="nameB" maxlength="40" placeholder="Name the finish" aria-label="Name the finish">
       </div>
       <p class="rules-note" id="rulesNote" style="margin-top:6px"></p>
+      <div class="row" style="margin-top:8px">
+        <label class="label" for="danger" style="flex:none">Danger</label>
+        <select id="danger" aria-label="Danger level"></select>
+      </div>
+      <p class="rules-note" id="dangerNote" style="margin-top:6px"></p>
+      <details class="trav" id="customDanger" hidden style="margin-top:6px">
+        <summary>Custom odds <small id="customSum"></small></summary>
+        <div class="row"><span class="label" style="flex:none">Accidents like</span><select id="dBase" aria-label="Which accidents can happen"></select></div>
+        <label class="slide"><span>All odds</span><input type="range" id="dAll" min="0" max="3" step="0.1"><b id="dAllV"></b></label>
+        <div id="dModes"></div>
+        <button class="btn small" id="dReset" type="button">Reset to 100%</button>
+      </details>
     </div>
 
     <div>
@@ -247,6 +270,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
       <ul class="legs" id="legs" style="margin-top:6px"></ul>
     </div>
     <div class="total"><span>Total</span><span class="t" id="total">0h</span></div>
+    <div class="energy" id="energy" hidden><span id="energyText"></span><span class="bar"><i id="energyBar"></i></span></div>
     <div class="row">
       <button class="btn" id="undo">Undo</button>
       <button class="btn" id="clear">Clear</button>

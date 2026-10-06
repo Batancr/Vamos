@@ -64,6 +64,10 @@ const MODES = {
   web:     { name: 'Web swing', icon: '🕸️', color: '#c0392b', dash: [3, 3], speed: 40, hours: 10, terrain: 'land', climb: 0, setup: 0, gap: 3, char: true },
   rocket:  { name: 'Rocket', icon: '🚀', color: '#222', dash: [14, 6], hours: 24, terrain: 'space', setup: 72, flight: 1, silly: true },
   moon:    { name: 'Rocket via the Moon', icon: '🌕', color: '#8a7a2e', dash: [14, 6], hours: 24, terrain: 'space', setup: 72, flight: 145, silly: true },
+  // New modes go at the end: route codes in challenge links store each mode's position in this list.
+  horse:   { name: 'Horse', icon: '🐎', color: '#8b5a2b', dash: [6, 2], speed: 12, hours: 8, terrain: 'land', climb: 500, setup: 1, gap: 3, noIce: true, roughK: 600, maxElev: 3000, mount: true },
+  camelride: { name: 'Camel ride', icon: '🐫', color: '#c9a14a', dash: [4, 3], speed: 4, hours: 10, terrain: 'land', climb: 400, setup: 1, gap: 3, noIce: true, mount: true },
+  elephant: { name: 'Elephant', icon: '🐘', color: '#7d8a96', dash: [8, 3], speed: 6, hours: 10, terrain: 'land', climb: 400, setup: 1, gap: 10, noIce: true, mount: true },
 };
 const MODE_KEYS = Object.keys(MODES);
 
@@ -71,18 +75,18 @@ const MODE_KEYS = Object.keys(MODES);
 // boost: extra speed per mode (0.5 = 50% faster), on top of earned stats. modes: extra ways to travel.
 const CHARS = {
   none:     { name: 'Traveller', icon: '🧍', power: 'Plain old you.' },
-  fox:      { name: 'Fox', icon: '🦊', power: 'Runs 15 km/h and walks 6 km/h, and even faster in jungle (20 and 8.5 km/h).', boost: { run: 0.5, walk: 0.2 }, terrain: { jungle: { run: 0.5, walk: 0.5 } } },
-  rabbit:   { name: 'Rabbit', icon: '🐇', power: 'Bounds over grassland: walks and runs twice as fast on prairie, steppe, pampas and savanna.', terrain: { grass: { walk: 1, run: 1 } } },
-  camel:    { name: 'Camel', icon: '🐪', power: 'Made for sand: walks and runs twice as fast in deserts.', terrain: { desert: { walk: 1, run: 1 } } },
-  monkey:   { name: 'Monkey', icon: '🐒', power: 'Swings through the canopy: walks and runs 2.5 times as fast in jungle, and climbs twice as fast on foot.', terrain: { jungle: { walk: 1.5, run: 1.5 } }, climbMul: 2 },
-  penguin:  { name: 'Penguin', icon: '🐧', power: 'Belly-slides at 3 times walking speed on ice and snow, sleds 50% faster, and swims 8 km/h in cold water.', terrain: { ice: { walk: 2, sled: 0.5 } }, boost: { swim: 8 / 2.4 - 1 }, noCold: true },
-  climber:  { name: 'Mountaineer', icon: '🧗', power: 'Never gets altitude sickness, climbs twice as fast on foot, and walks 50% faster on ice and snow.', noAltitude: true, climbMul: 2, terrain: { ice: { walk: 0.5 } } },
+  fox:      { name: 'Fox', icon: '🦊', power: 'Runs 15 km/h and walks 6 km/h, and even faster in jungle (20 and 8.5 km/h).', boost: { run: 0.5, walk: 0.2 }, terrain: { jungle: { run: 0.5, walk: 0.5 } }, resist: ['jungle'], spooky: true },
+  rabbit:   { name: 'Rabbit', icon: '🐇', power: 'Bounds over grassland: walks and runs twice as fast on prairie, steppe, pampas and savanna.', terrain: { grass: { walk: 1, run: 1 } }, tires: 2 },
+  camel:    { name: 'Camel', icon: '🐪', power: 'Made for sand: walks and runs twice as fast in deserts.', terrain: { desert: { walk: 1, run: 1 } }, resist: ['desert'] },
+  monkey:   { name: 'Monkey', icon: '🐒', power: 'Swings through the canopy: walks and runs 2.5 times as fast in jungle, and climbs twice as fast on foot.', terrain: { jungle: { walk: 1.5, run: 1.5 } }, climbMul: 2, resist: ['jungle'] },
+  penguin:  { name: 'Penguin', icon: '🐧', power: 'Belly-slides at 3 times walking speed on ice and snow, sleds 50% faster, and swims 8 km/h in cold water.', terrain: { ice: { walk: 2, sled: 0.5 } }, boost: { swim: 8 / 2.4 - 1 }, noCold: true, resist: ['ice'] },
+  climber:  { name: 'Mountaineer', icon: '🧗', power: 'Never gets altitude sickness, climbs twice as fast on foot, and walks 50% faster on ice and snow.', noAltitude: true, climbMul: 2, terrain: { ice: { walk: 0.5 } }, resist: ['ice'] },
   mermaid:  { name: 'Mermaid', icon: '🧜', power: 'Swims 20 km/h, 24 hours a day, in any water temperature.', boost: { swim: 20 / 2.4 - 1 }, noCold: true, swimHours: 24 },
   genie:    { name: 'Genie', icon: '🧞', power: 'Rides a magic carpet: 60 km/h, day and night, over anything.', modes: ['carpet'] },
   thunder:  { name: 'Thunder God', icon: '⚡', power: 'Hammer flight: 250 km/h for 12 hours a day, over anything.', modes: ['hammer'] },
-  caped:    { name: 'Caped Hero', icon: '🦸', power: 'Superflight: 1,000 km/h, nonstop, up to the edge of space.', modes: ['fly'] },
+  caped:    { name: 'Caped Hero', icon: '🦸', power: 'Superflight: 1,000 km/h, nonstop, up to the edge of space. Never gets tired.', modes: ['fly'], tireless: true },
   knight:   { name: 'Star Knight', icon: '🧙', power: 'Never waits: no setup or hitchhiking delays, and runs twice as fast.', noSetup: true, boost: { run: 1 } },
-  relic:    { name: 'Relic Hunter', icon: '🤠', power: 'Whip-swings across up to 10 km of water on land modes, never gets seasick, and is 30% faster on foot in deserts and jungle.', gapBonus: 10, noSeasick: true, terrain: { desert: { walk: 0.3, run: 0.3 }, jungle: { walk: 0.3, run: 0.3 } } },
+  relic:    { name: 'Relic Hunter', icon: '🤠', power: 'Whip-swings across up to 10 km of water on land modes, never gets seasick, and is 30% faster on foot in deserts and jungle.', gapBonus: 10, noSeasick: true, terrain: { desert: { walk: 0.3, run: 0.3 }, jungle: { walk: 0.3, run: 0.3 } }, resist: ['desert', 'jungle'] },
   web:      { name: 'Web Slinger', icon: '🕷️', power: 'Web swing: 40 km/h, and mountains don\'t slow it.', modes: ['web'] },
 };
 let CH = CHARS.none;
@@ -111,6 +115,7 @@ function terrainProblem(m, i, lat, lon) {
   if (M.terrain === 'land') {
     if (!land) return 'water';
     if (M.noIce && isIce(i, lat, lon)) return 'ice';
+    if (M.maxElev && elevM(i) > M.maxElev) return 'high';
   } else if (M.terrain === 'water') {
     if (land) return 'land';
   } else if (M.terrain === 'snow') {
@@ -134,7 +139,7 @@ function speedAt(m, i, lat, eastFrac, boost) {
   const M = MODES[m];
   if (m === 'balloon') return Math.max(2, 15 + 25 * windDir(lat) * eastFrac);
   if (m === 'sail') return Math.max(4, 10 + 8 * windDir(lat) * eastFrac); // tacking still gets you upwind, slowly
-  let v = M.speed * (1 + totalBoost(boost, m) + terrainBoost(m, i));
+  let v = (m === 'camelride' && biomeOf(i) === 'desert' ? 8 : M.speed) * (1 + totalBoost(boost, m) + terrainBoost(m, i)); // camels are at home in deserts
   if (M.roughK) v = v / (1 + roughM(i) / M.roughK);
   return v;
 }
@@ -179,7 +184,7 @@ function solveRoute(startLL, endLL, allowed, boost) {
   // A* heuristic: straight-line distance at the fastest day-averaged speed, or via the best spaceports.
   let vmax = 0;
   const capB = 1 + STAT_CAP / 100;
-  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : MODES[m].speed * (capB + totalBoost(null, m) + maxTerrainBoost(m)) * hoursPerDay(m, 0) / 24);
+  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : (m === 'camelride' ? 8 : MODES[m].speed) * (capB + totalBoost(null, m) + maxTerrainBoost(m)) * hoursPerDay(m, 0) / 24);
   const tl = [cellLat((t / C) | 0), cellLon(t % C)];
   const nearSite = (la, lo) => { let b = Infinity; for (const x of SITES) b = Math.min(b, hav(la, lo, x[1], x[2])); return b; };
   const spaceCost = space.length ? Math.min(...space.map(m => MODES[m].setup + MODES[m].flight)) : Infinity;
@@ -268,10 +273,11 @@ const TRIPS = [
 ];
 
 const RULES = {
-  classic:  { name: 'Classic', modes: ['walk', 'run', 'bike', 'skate', 'car', 'hitch', 'train', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'balloon', 'tortoise', 'cannon', 'rocket', 'moon'], note: 'Everything except planes. Find the fastest mix.' },
+  classic:  { name: 'Classic', modes: ['walk', 'run', 'bike', 'skate', 'car', 'hitch', 'train', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'horse', 'camelride', 'elephant', 'balloon', 'tortoise', 'cannon', 'rocket', 'moon'], note: 'Everything except planes. Find the fastest mix.' },
   human:    { name: 'Human power', modes: ['walk', 'run', 'bike', 'skate', 'kayak', 'swim', 'glide'], note: 'No engines. Oceans are your problem.' },
   tri:      { name: 'Triathlon', modes: ['run', 'bike', 'swim'], note: 'Run, bike and swim only, and each for at least 1 hour.', min: 1 },
-  nowheels: { name: 'No wheels', modes: ['walk', 'run', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'balloon', 'tortoise'], note: 'Feet, boats, wings, dogs and balloons.' },
+  nowheels: { name: 'No wheels', modes: ['walk', 'run', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'horse', 'camelride', 'elephant', 'balloon', 'tortoise'], note: 'Feet, hooves, boats, wings, dogs and balloons.' },
+  zoo:      { name: 'Zoo Bonanza', modes: ['walk', 'swim', 'horse', 'camelride', 'elephant', 'sled', 'tortoise'], note: 'Animals only: horses, camels, elephants, sled dogs and a giant tortoise. With danger on, every animal has a mind of its own.' },
   balloon:  { name: 'Balloonatic', modes: ['walk', 'balloon'], note: 'A hot air balloon and your own two feet. Winds blow east between 30° and 60° latitude, west elsewhere.' },
   rocket:   { name: 'Rocket Man', modes: ['walk', 'run', 'rocket', 'moon'], note: 'Rockets only fly between spaceports. You walk the rest.' },
   silly:    { name: 'Silly season', modes: ['walk', 'tortoise', 'cannon', 'swim', 'glide', 'balloon'], note: 'Only the daft ways to travel. Bring snacks.' },
@@ -303,6 +309,7 @@ const PROBLEM_TEXT = {
   snow: () => 'Dog sleds need snow: ice sheets, or land beyond 60° north or south.',
   ice: m => `${MODES[m].name}s don't work on ice sheets. Walk it.`,
   peak: m => `Your ${m === 'glide' ? 'paraglider' : 'balloon'} crashed into the mountains. Go around peaks over 4,500 m.`,
+  high: m => `${MODES[m].name}s can't manage ground above ${MODES[m].maxElev.toLocaleString()} m. Go around, or walk it.`,
 };
 // km of the wrong surface a leg may cross (bridges, canals); the Relic Hunter's whip adds more on land.
 const gapOf = m => MODES[m].gap + (MODES[m].terrain === 'land' && CH.gapBonus || 0);
@@ -319,7 +326,8 @@ function evalLeg(mode, a, b, boost) {
     return leg;
   }
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])) / 0.05));
-  let along = 0, gapRun = 0, maxE = 0, cold = false, ice = false, lake = false, launch = false, prevCell = cellOf(a[0], a[1]);
+  let along = 0, gapRun = 0, maxE = 0, cold = false, ice = false, lake = false, launch = false, prevCell = cellOf(a[0], a[1]), lat = 0;
+  const bio = { desert: 0, grass: 0, jungle: 0, ice: 0 };
   for (let k = 0; k < n; k++) {
     const t0 = k / n, t1 = (k + 1) / n;
     const la0 = a[0] + (b[0] - a[0]) * t0, lo0 = a[1] + (b[1] - a[1]) * t0;
@@ -340,9 +348,11 @@ function evalLeg(mode, a, b, boost) {
     if (isIce(i, mla, mlo)) ice = true;
     if (isLake(i)) lake = true;
     if (along <= 15 && isHill(i)) launch = true;
+    const bk = biomeOf(i); if (bk) bio[bk] += km;
+    lat += Math.abs(mla) * km;
     prevCell = i;
   }
-  leg.maxE = maxE; leg.cold = cold; leg.ice = ice; leg.lake = lake;
+  leg.maxE = maxE; leg.cold = cold; leg.ice = ice; leg.lake = lake; leg.bio = bio; leg.lat = leg.km ? lat / leg.km : 0;
   if (mode === 'glide' && !leg.error) {
     if (!launch) leg.error = 'Paragliders launch from hills. Start this leg somewhere hilly (300 m above the land around).';
     else if (leg.km > M.maxKm) leg.error = `A paraglider flies about ${M.maxKm} km in a day. Land, then launch again from a hill.`;
@@ -387,7 +397,8 @@ function finalizeLegs(legs, seed) {
     const M = MODES[l.mode], first = k === 0 || legs[k - 1].mode !== l.mode;
     if (M.terrain === 'space') { cum = 0; acclimatised = false; return; }
     if (first) { cum = 0; acclimatised = false; }
-    const hpd = l.cold ? 3 : M.hours, before = cum; cum += l.moving;
+    const hpd = l.cold ? 3 : l.mode === 'swim' && CH.swimHours ? CH.swimHours : M.hours, before = cum; cum += l.moving;
+    l.hpd = hpd;
     l.rest = restFor(cum, hpd) - restFor(before, hpd);
     l.setup = CH.noSetup ? 0 : l.mode === 'hitch' ? luckWait(seed || 1, k) : first ? M.setup : 0; // every lift is a new wait
     if (l.rest > 0) l.events.push(`${fmtH(l.rest)} of sleep and rest (${hpd}h of ${M.name.toLowerCase()} a day)`);
@@ -416,6 +427,156 @@ function luckWait(seed, k) {
   a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), a | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * 25) / 4;
+}
+
+// ---------- danger: accidents and energy ----------
+// Off is the classic game. Higher levels switch on more kinds of accident (lv) and make them likelier (k).
+// Energy counts from Medium: running it to zero means a day's collapse on Medium, and death from Hard.
+const DANGER = {
+  off:       { name: 'Off', lv: 0, k: 0, note: 'No accidents and no energy limits. Ranked play is always Off.' },
+  easy:      { name: 'Easy', lv: 1, k: 0.6, note: 'Small hiccups: train delays, flat tyres, storms keeping boats in port.' },
+  medium:    { name: 'Medium', lv: 2, k: 1, note: 'Crashes, dodgy lifts and rocket faults. Energy counts: run out and you collapse for a day.' },
+  hard:      { name: 'Hard', lv: 3, k: 1.5, note: 'Wind, ice, heat and jungle join in. Run out of energy and you die of exhaustion.' },
+  nightmare: { name: 'Nightmare', lv: 4, k: 2.5, note: 'Everything, more often, and some crashes are fatal. Even the tortoise is risky.' },
+};
+// Custom: a base level, an overall odds multiplier g (0 to 3) and per-mode multipliers m (0 to 3).
+function dangerOf(key, custom) {
+  if (key === 'custom' && custom && DANGER[custom.base]) {
+    const D = DANGER[custom.base], g = clampNum(custom.g, 0, 3, 1), m = {};
+    for (const k in custom.m || {}) if (MODES[k]) m[k] = clampNum(custom.m[k], 0, 3, 1);
+    return { key, lv: D.lv, k: D.k * g, m };
+  }
+  const D = DANGER[key] || DANGER.off;
+  return { key: DANGER[key] ? key : 'off', lv: D.lv, k: D.k, m: {} };
+}
+// Custom odds from a link or the database, cleaned up: unknown modes dropped, numbers kept to 0–3.
+function cleanCustom(c) {
+  if (!c || typeof c !== 'object' || !DANGER[c.base] || c.base === 'off') return null;
+  const m = {}; for (const k in c.m || {}) if (Object.hasOwn(MODES, k)) m[k] = Math.round(clampNum(c.m[k], 0, 3, 1) * 10) / 10;
+  return { base: c.base, g: Math.round(clampNum(c.g, 0, 3, 1) * 10) / 10, m };
+}
+const clampNum = (v, lo, hi, d) => typeof v === 'number' && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
+// Accidents per mode. lv: first danger level it happens on. p: chance per 10 hours of moving (per leg if leg: true).
+// h: hours lost [min, max]. hurt: energy lost. dead: share that are fatal on Nightmare. wind: likelier in stormy latitudes (40°–65°).
+// Rates are game-balance guesses, not real accident statistics.
+const HAZARDS = {
+  train:    [{ lv: 1, p: 0.25, h: [1, 6], t: '🚧 Signal failure' }, { lv: 3, p: 0.02, h: [24, 48], hurt: 30, t: '🚨 Derailment' }],
+  car:      [{ lv: 1, p: 0.15, h: [1, 2], t: '🛞 Flat tyre' }, { lv: 2, p: 0.04, h: [24, 48], hurt: 40, dead: 0.25, t: '💥 Car crash' }],
+  hitch:    [{ lv: 2, p: 0.06, leg: true, h: [4, 8], hurt: 20, t: '💸 Robbed by the driver' }, { lv: 2, p: 0.02, leg: true, h: [48, 96], hurt: 30, t: '🚐 Kidnapped by a dodgy driver, escaped' }],
+  ferry:    [{ lv: 1, p: 0.03, wind: true, h: [12, 24], t: '🌊 Storm: held in port' }, { lv: 4, p: 0.004, h: [48, 72], hurt: 30, t: '🛟 The ship sank: rescued' }],
+  sail:     [{ lv: 1, p: 0.08, h: [6, 24], t: '🪫 Becalmed: no wind' }, { lv: 3, p: 0.02, wind: true, h: [24, 48], hurt: 30, dead: 0.2, t: '⛈️ Capsized in a storm' }],
+  bike:     [{ lv: 2, p: 0.15, h: [1, 1], t: '🛞 Puncture' }, { lv: 3, p: 0.04, h: [24, 24], hurt: 30, t: '🤕 Bike crash' }],
+  skate:    [{ lv: 2, p: 0.3, h: [2, 2], hurt: 10, t: '🤕 Wipeout' }],
+  walk:     [{ lv: 3, p: 0.02, h: [24, 24], hurt: 20, t: '🦶 Twisted ankle' }],
+  run:      [{ lv: 3, p: 0.04, h: [24, 24], hurt: 20, t: '🦶 Twisted ankle' }],
+  kayak:    [{ lv: 3, p: 0.05, h: [6, 6], hurt: 30, t: '🌊 Capsized' }],
+  swim:     [{ lv: 3, p: 0.08, h: [3, 3], hurt: 20, t: '😖 Cramp' }, { lv: 4, p: 0.01, h: [6, 6], t: '🦈 Shark! Hid on a rock' }],
+  glide:    [{ lv: 3, p: 0.06, leg: true, wind: true, h: [24, 48], hurt: 40, dead: 0.25, t: '💨 A gust collapsed the wing' }],
+  balloon:  [{ lv: 3, p: 0.02, wind: true, h: [48, 48], hurt: 40, dead: 0.25, t: '💨 Wind shear crash' }],
+  sled:     [{ lv: 3, p: 0.06, h: [12, 12], hurt: 25, t: '🧊 Spun out on black ice' }, { lv: 4, p: 0.03, h: [24, 24], t: '🐕 The dogs ran off' }],
+  rocket:   [{ lv: 2, p: 0.15, leg: true, h: [24, 72], t: '🔧 Engine fault: launch scrubbed' }, { lv: 4, p: 0.03, leg: true, h: [0, 0], dead: 1, t: '🔥 The rocket exploded' }],
+  moon:     [{ lv: 2, p: 0.15, leg: true, h: [24, 72], t: '🔧 Engine fault: launch scrubbed' }, { lv: 4, p: 0.05, leg: true, h: [0, 0], dead: 1, t: '🔥 The rocket exploded' }],
+  cannon:   [{ lv: 2, p: 0.3, leg: true, h: [2, 2], hurt: 15, t: '🎯 Missed the net' }],
+  tortoise: [{ lv: 4, p: 0.05, h: [12, 12], t: '🥬 The tortoise wandered off to eat' }],
+  horse:    [{ lv: 2, p: 0.06, h: [6, 24], hurt: 25, dead: 0.1, t: '🐎 Thrown from the saddle' }],
+  camelride:[{ lv: 1, p: 0.2, h: [2, 8], t: '🐫 The camel refused to move' }],
+  elephant: [{ lv: 1, p: 0.15, h: [2, 6], t: '🐘 The elephant stopped for a bath' }, { lv: 4, p: 0.02, h: [24, 48], hurt: 40, dead: 0.2, t: '🐘 Stampede' }],
+  web:      [{ lv: 3, p: 0.03, h: [6, 6], hurt: 20, t: '🕸️ A web line snapped' }],
+};
+// On foot or on an animal, from Hard: wild places have their own dangers, unless your character is at home there.
+const FOOT = m => MODES[m].human || MODES[m].mount;
+const WILD = [{ b: 'jungle', lv: 3, p: 0.15, h: [12, 12], t: '🌴 Lost in the jungle' }];
+// Energy: % used per moving hour. Other modes (trains, boats, lifts) are a sit-down, so you recover a little.
+const DRAIN = { walk: 3, run: 8, bike: 4, skate: 8, kayak: 6, swim: 8, glide: 5, sled: 4, cannon: 6, car: 1, web: 5, horse: 2, camelride: 1.5, elephant: 1.5 };
+const RECOVER = 2.5, RIDE = 1.5;
+const DEAD_H = 999999; // the time a 1v1 records for a traveller who didn't make it
+
+// A repeatable random number in [0, 1) for this trip seed, leg and roll, so challenges share the same luck.
+function chance(seed, key) {
+  let h = 2166136261 ^ (seed >>> 0);
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  h = Math.imul(h ^ (h >>> 15), h | 1); h ^= h + Math.imul(h ^ (h >>> 7), h | 61);
+  return ((h ^ (h >>> 14)) >>> 0) / 4294967296;
+}
+// The accidents that could happen on leg l, each with its probability.
+function hazardsFor(l, D) {
+  if (!D.lv || l.error) return [];
+  const out = [], mul = D.k * (D.m[l.mode] ?? 1), windy = l.lat >= 40 && l.lat <= 65 ? 2 : 1;
+  const exp10 = (l.moving || 0) / 10, P = (H, x) => 1 - Math.exp(-H.p * mul * (H.wind ? windy : 1) * x);
+  for (const H of HAZARDS[l.mode] || []) if (D.lv >= H.lv) out.push({ H, p: P(H, H.leg ? 1 : exp10) });
+  if (D.lv >= 3 && FOOT(l.mode) && l.km) for (const H of WILD) if (!(CH.resist || []).includes(H.b) && l.bio[H.b]) out.push({ H, p: P(H, exp10 * l.bio[H.b] / l.km) });
+  if (D.lv >= 4 && CH.spooky && (l.mode === 'walk' || l.mode === 'run')) out.push({ H: { h: [6, 6], t: '🦊 Spooked: bolted off course' }, p: P({ p: 0.15 }, 1) });
+  return out.filter(x => x.p > 0);
+}
+const riskOf = (l, D) => 1 - hazardsFor(l, D).reduce((q, x) => q * (1 - x.p), 1);
+// Energy used per moving hour on leg l: hotter, colder and longer-legged travellers tire faster.
+function drainOf(l, D) {
+  if (CH.tireless) return 0;
+  let d = DRAIN[l.mode] || (l.mode === 'tortoise' && D.lv >= 4 ? 0.8 : 0); // nobody sleeps well on a tortoise
+  if (d && D.lv >= 3 && FOOT(l.mode) && l.km) {
+    const harsh = ['desert', 'ice'].filter(b => !(CH.resist || []).includes(b)).reduce((s, b) => s + l.bio[b], 0) / l.km;
+    d *= 1 + 0.6 * harsh; // heat and cold
+  }
+  if (D.lv >= 4 && CH.tires) d *= CH.tires;
+  return d;
+}
+// Applies danger to finalized legs. rolled: true when the trip is actually played (accidents happen);
+// false while planning (only the energy forecast and the risk shown). Returns { energy, low, dead, incidents }.
+function applyDanger(legs, seed, D, rolled) {
+  const out = { energy: 100, low: 100, dead: null, incidents: [] };
+  if (!D.lv) return out;
+  let e = 100, gone = false;
+  legs.forEach((l, k) => {
+    l.risk = riskOf(l, D); l.incidents = [];
+    if (gone) { l.skipped = true; return; }
+    if (rolled) {
+      const tag = `${k}|${l.mode}|${l.a.map(x => x.toFixed(3))}|${l.b.map(x => x.toFixed(3))}`;
+      hazardsFor(l, D).forEach((x, j) => {
+        if (chance(seed, tag + '|' + j) >= x.p) return;
+        const r = chance(seed, tag + '|h' + j), H = x.H, at = 0.1 + 0.8 * chance(seed, tag + '|f' + j);
+        const inc = { t: H.t, h: Math.round(H.h[0] + (H.h[1] - H.h[0]) * r), hurt: H.hurt || 0, f: at, leg: k,
+          dead: D.lv >= 4 && H.dead && chance(seed, tag + '|d' + j) < H.dead };
+        l.incidents.push(inc); out.incidents.push(inc);
+      });
+      l.incidents.sort((a, b) => a.f - b.f);
+    }
+    const drain = drainOf(l, D), hpd = l.hpd || MODES[l.mode].hours, nightH = hpd < 24 ? 24 - hpd : 0;
+    e = Math.min(100, e + (l.setup || 0) * RECOVER);
+    let left = l.moving || 0, done = 0, nights = nightH ? Math.round((l.rest || 0) / nightH) : 0, next = 0, collapsedAt = null;
+    const hit = upto => { // accidents up to this many moving hours into the leg
+      while (next < l.incidents.length && l.incidents[next].f * (l.moving || 1) <= upto) {
+        const inc = l.incidents[next++];
+        l.extra += inc.h; l.events.push(`${inc.t}${inc.h ? `: +${fmtH(inc.h)}` : ''}`);
+        if (inc.dead) { l.dead = { why: inc.t, f: inc.f }; return true; }
+        e -= inc.hurt; e = Math.min(100, e + inc.h * RECOVER);
+        if (D.lv >= 2 && e <= 0) return collapse(inc.f);
+      }
+      return false;
+    };
+    const collapse = f => {
+      if (D.lv >= 3) { l.dead = { why: '💀 Died of exhaustion', f }; return true; }
+      if (collapsedAt == null) { collapsedAt = f; l.extra += 24; l.events.push('😵 Collapsed from exhaustion: +24h to recover'); }
+      e = 50; return false;
+    };
+    if (l.moving === 0 && hit(0)) { gone = true; }
+    while (!gone && left > 1e-9) {
+      const h = Math.min(hpd, left); left -= h;
+      if (hit(done + h)) { gone = true; break; }
+      done += h;
+      e += drain ? -h * drain : h * RIDE;
+      out.low = Math.min(out.low, e);
+      if (D.lv >= 2 && e <= 0 && collapse(done / (l.moving || 1))) { gone = true; break; }
+      e = Math.min(100, e);
+      if (left > 1e-9 && nights > 0) { e = Math.min(100, e + nightH * RECOVER); nights--; }
+    }
+    if (!gone && hit(Infinity)) gone = true;
+    if (D.lv < 2) e = 100; // energy only counts from Medium
+    l.energy = Math.max(0, Math.round(e)); out.low = Math.max(0, Math.min(out.low, e));
+    if (l.dead) { out.dead = { ...l.dead, leg: k }; l.events.push(l.dead.why.startsWith('💀') ? l.dead.why : `${l.dead.why}. 💀 Didn't survive`); }
+    l.total = (l.setup || 0) + (l.moving || 0) + (l.rest || 0) + l.extra;
+  });
+  out.energy = Math.max(0, Math.round(e)); out.low = D.lv >= 2 ? Math.round(out.low) : 100;
+  return out;
 }
 
 function grade(ratio) {
@@ -451,6 +612,8 @@ const BADGES = [
   { id: 'slow', icon: '🐌', name: 'Slowest Ever', how: 'Finish a trip that takes over a year', test: (L, c) => c.total > 365 * 24 },
   { id: 'nowheels', icon: '🦶', name: 'Wheel-free', how: 'Finish a No wheels trip', test: (L, c) => c.rules === 'nowheels' },
   { id: 'aplus', icon: '🏆', name: 'Beat the Computer', how: 'Score an A+', test: (L, c) => c.grade === 'A+' },
+  { id: 'survivor', icon: '🦾', name: 'Survivor', how: 'Finish a trip on Nightmare danger', test: (L, c) => c.lv >= 4 },
+  { id: 'unlucky', icon: '🍀', name: 'Unlucky but Alive', how: 'Survive 3 accidents in one trip', test: (L, c) => c.incidents >= 3 },
 ];
 // Adds a finished trip. km only count the first time a trip is finished under a rule set (key), so replaying
 // the same trip doesn't farm speed. Returns the new progress, badges just earned and stats that went up.
@@ -542,7 +705,7 @@ function mergeResults(a, b) {
   return [...best.values()].sort((x, y) => x.h - y.h).slice(0, 12);
 }
 function encodeChallenge(c) {
-  const j = JSON.stringify({ v: 1, id: c.id, f: c.f, t: c.t, r: c.r, s: c.s, res: c.res.map(r => ({ n: r.n, h: Math.round(r.h * 100) / 100, g: r.g, p: r.p, c: r.c || 'none' })) });
+  const j = JSON.stringify({ v: 1, id: c.id, f: c.f, t: c.t, r: c.r, s: c.s, d: c.d || 'off', dc: c.d === 'custom' ? cleanCustom(c.dc) : undefined, res: c.res.map(r => ({ n: r.n, h: Math.round(r.h * 100) / 100, g: r.g, p: r.p, c: r.c || 'none' })) });
   return b64e(j).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 function decodeChallenge(code) {
@@ -557,8 +720,9 @@ function decodeChallenge(code) {
       if (!r || !num(r.h, 0, 1e7) || !['A+', 'A', 'B', 'C', 'D', 'F', '?'].includes(r.g)) continue;
       res.push({ n: cleanName(r.n, 'Player'), h: r.h, g: r.g, p: decodeRoute(r.p) ? r.p : '', c: CHARS[r.c] && Object.hasOwn(CHARS, r.c) ? r.c : 'none' });
     }
-    return { v: 1, id: o.id, f, t, r: o.r, s: Math.floor(o.s), res: mergeResults(res, []) };
+    const dc = o.d === 'custom' ? cleanCustom(o.dc) : null, d = DANGER[o.d] && Object.hasOwn(DANGER, o.d) ? o.d : dc ? 'custom' : 'off';
+    return { v: 1, id: o.id, f, t, r: o.r, s: Math.floor(o.s), d, dc, res: mergeResults(res, []) };
   } catch { return null; }
 }
 
-if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, BIOMES, biomeOf, terrainBoost, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf, CHARS, setCharacter, totalBoost, allowedModes, clipLeg, gapOf, encodeRoute, decodeRoute, mergeResults, encodeChallenge, decodeChallenge };
+if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, BIOMES, biomeOf, terrainBoost, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf, CHARS, setCharacter, totalBoost, allowedModes, clipLeg, gapOf, encodeRoute, decodeRoute, mergeResults, encodeChallenge, decodeChallenge, DANGER, dangerOf, cleanCustom, HAZARDS, hazardsFor, riskOf, drainOf, applyDanger, chance, DEAD_H };

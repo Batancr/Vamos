@@ -2,7 +2,7 @@
 // ---------- state ----------
 const $ = id => document.getElementById(id);
 const cv = $('map'), ctx = cv.getContext('2d');
-const S = { trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, char: 'none', show: { ports: true, hills: true, balloons: true, desert: false, grass: false, jungle: false, ice: false }, markers: [], view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
+const S = { danger: 'off', dcustom: null, run: null, plan: null, trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, char: 'none', show: { ports: true, hills: true, balloons: true, desert: false, grass: false, jungle: false, ice: false }, markers: [], view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
 let baseImg, W = 0, H = 0, DPR = 1;
 
 // ---------- progress (stats and badges), kept in this browser only ----------
@@ -20,9 +20,40 @@ function recompute() {
   const allowed = allowedModes(S.rules);
   S.legs = finalizeLegs(S.pts.slice(1).map((p, k) => evalLeg(p.mode, S.pts[k].ll, p.ll, b)), S.seed);
   for (const l of S.legs) if (!allowed.includes(l.mode) && !l.error) l.error = `${MODES[l.mode].name} isn't allowed in ${RULES[S.rules].name}. Tap the line and pick another way to travel.`;
+  S.plan = applyDanger(S.legs, S.seed, dangerNow(), false); S.run = null;
   S.lines = linesOf(S.legs, S.pts);
   if (S.sel != null && !S.lines.some(L => L.id === S.sel)) S.sel = null;
 }
+// ---------- danger level ----------
+const dangerNow = () => dangerOf(S.danger, S.dcustom);
+let myDanger = { key: 'off', custom: null }; // the player's own choice; challenges and 1v1s bring their own
+try { const d = JSON.parse(localStorage.getItem('vamos.danger') || 'null'); if (d && (DANGER[d.key] || d.key === 'custom')) myDanger = d; } catch {}
+function setDanger(key, custom, locked) {
+  S.danger = DANGER[key] || key === 'custom' ? key : 'off'; S.dcustom = S.danger === 'custom' ? custom || { base: 'hard', g: 1, m: {} } : null;
+  $('danger').value = S.danger; $('danger').disabled = !!locked;
+  const D = dangerNow(), base = S.danger === 'custom' ? DANGER[S.dcustom.base] : DANGER[S.danger];
+  $('dangerNote').textContent = S.danger === 'custom' ? `Custom: ${base.name} accidents at ${Math.round(S.dcustom.g * 100)}% odds.` : base.note;
+  $('customDanger').hidden = S.danger !== 'custom' || !!locked;
+  if (S.danger === 'custom') renderCustomDanger();
+  return D;
+}
+function saveMyDanger() { myDanger = { key: S.danger, custom: S.dcustom }; try { localStorage.setItem('vamos.danger', JSON.stringify(myDanger)); } catch {} }
+function renderCustomDanger() {
+  const c = S.dcustom, pct = v => `${Math.round(v * 100)}%`;
+  $('dBase').value = c.base; $('dAll').value = c.g; $('dAllV').textContent = pct(c.g);
+  $('customSum').textContent = `${DANGER[c.base].name} · ${pct(c.g)}`;
+  const modes = allowedModes(S.rules).filter(m => (HAZARDS[m] || []).some(H => H.lv <= DANGER[c.base].lv));
+  $('dModes').innerHTML = modes.map(m => `<label class="slide"><span>${MODES[m].icon} ${MODES[m].name}</span><input type="range" min="0" max="3" step="0.1" data-dm="${m}" value="${c.m[m] ?? 1}"><b>${pct(c.m[m] ?? 1)}</b></label>`).join('') ||
+    '<p class="hint">No accidents for these rules at this level.</p>';
+  $('dModes').querySelectorAll('input').forEach(r => r.oninput = () => { c.m[r.dataset.dm] = +r.value; r.nextElementSibling.textContent = pct(+r.value); dangerChanged(); });
+}
+function dangerChanged() { saveMyDanger(); const c = S.dcustom; if (c) { $('dAllV').textContent = `${Math.round(c.g * 100)}%`; $('customSum').textContent = `${DANGER[c.base].name} · ${Math.round(c.g * 100)}%`; $('dangerNote').textContent = `Custom: ${DANGER[c.base].name} accidents at ${Math.round(c.g * 100)}% odds.`; } routeChanged(); }
+$('danger').innerHTML = Object.entries(DANGER).map(([k, d]) => `<option value="${k}">${d.name}</option>`).join('') + '<option value="custom">Custom…</option>';
+$('dBase').innerHTML = Object.entries(DANGER).filter(([k]) => k !== 'off').map(([k, d]) => `<option value="${k}">${d.name}</option>`).join('');
+$('danger').onchange = e => { setDanger(e.target.value, myDanger.custom); saveMyDanger(); routeChanged(); };
+$('dBase').onchange = e => { S.dcustom.base = e.target.value; renderCustomDanger(); dangerChanged(); };
+$('dAll').oninput = e => { S.dcustom.g = +e.target.value; dangerChanged(); };
+$('dReset').onclick = () => { S.dcustom.g = 1; S.dcustom.m = {}; renderCustomDanger(); dangerChanged(); };
 // Something changed the route: drop the old result and redraw.
 function routeChanged() { recompute(); S.best = null; $('result').hidden = true; renderModes(); renderLegs(); draw(); if (window.Online) Online.tripChanged(); }
 const legPts = l => MODES[l.mode].terrain === 'space' ? arc(l.a, l.b) : [l.a, l.b];
@@ -298,7 +329,9 @@ function drawTraveller(A) {
   if (!human || A.mode === 'bike' || A.mode === 'skate' || A.mode === 'kayak') { ctx.font = '26px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(M.icon, 0, 10); }
   if (S.char !== 'none') { // characters ride along as their emoji instead of the stick figure
     ctx.font = '24px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(CHARS[S.char].icon, Math.sin(swing) * 2, -16); ctx.restore(); return;
+    ctx.fillText(CHARS[S.char].icon, Math.sin(swing) * 2, -16);
+    if (A.sick) { ctx.font = '18px system-ui, sans-serif'; ctx.fillText(A.sick, 16, -34); }
+    ctx.restore(); return;
   }
   ctx.beginPath(); ctx.arc(0, -26, 5, 0, 7); ctx.fillStyle = '#fbf8f1'; ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0, -21); ctx.lineTo(0, -8);                       // body
@@ -307,7 +340,7 @@ function drawTraveller(A) {
   ctx.moveTo(0, -8); ctx.lineTo(Math.sin(swing) * 7, 2);                         // legs
   ctx.moveTo(0, -8); ctx.lineTo(-Math.sin(swing) * 7, 2);
   ctx.stroke();
-  if (A.sick) { ctx.font = '14px system-ui, sans-serif'; ctx.fillText(A.sick, 10, -34); }
+  if (A.sick) { ctx.font = '18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(A.sick, 12, -36); }
   ctx.restore();
 }
 
@@ -316,10 +349,10 @@ function renderModes() {
   const allowed = allowedModes(S.rules);
   if (!allowed.includes(S.mode)) S.mode = allowed[0];
   const b = boost(), num = v => +v.toFixed(v < 1 ? 2 : 1);
-  $('modes').innerHTML = MODE_KEYS.filter(m => allowed.includes(m)).map(m => {
+  $('modes').innerHTML = allowed.filter(m => MODES[m]).map(m => {
     const M = MODES[m], up = Math.round(totalBoost(b, m) * 100);
     const sp = M.terrain === 'space' ? `${M.setup}h prep` : m === 'balloon' ? 'wind-powered' : m === 'sail' ? '4–18 km/h · wind' :
-      m === 'cannon' ? '300 m a shot · 2h reload' : `${num(M.speed * (1 + totalBoost(b, m)))} km/h · ${hoursPerDay(m, 0)}h/day`;
+      m === 'cannon' ? '300 m a shot · 2h reload' : m === 'camelride' ? `${num(4 * (1 + totalBoost(b, m)))} km/h, 8 in deserts` : `${num(M.speed * (1 + totalBoost(b, m)))} km/h · ${hoursPerDay(m, 0)}h/day`;
     return `<button class="mode" aria-pressed="${m === S.mode}" data-m="${m}"><span class="ic">${M.icon}</span>${M.name}<span class="sp">${sp}${up ? ` <b class="up">+${up}%</b>` : ''}</span><span class="sw" style="background:${M.color}"></span></button>`;
   }).join('');
   $('modes').querySelectorAll('.mode').forEach(b => b.onclick = () => {
@@ -346,9 +379,17 @@ function renderLegs() {
   if (!S.legs.length) {
     el.innerHTML = `<li class="empty">Start at ${esc(S.trip.from.split(',')[0])}. Pick a way to travel, then click the map to add a stop, or press ✏️ and drag to draw a line. Tap any line later to change how you travel it.</li>`;
   } else {
+    const D = dangerNow();
     el.innerHTML = S.lines.map((L, n) => {
-      const M = MODES[L.mode], stops = L.legs.length > 1 ? ` · ${L.legs.length} bends` : '';
-      return `<li class="${L.error ? 'bad' : ''}${L.id === S.sel ? ' sel' : ''}" data-line="${L.id}" role="button" tabindex="0" aria-pressed="${L.id === S.sel}" title="Tap to change how you travel this line"><span>${M.icon}</span><span>Line ${n + 1}: ${M.name} · ${fmtKm(L.km)}${stops}</span><span class="t">${fmtH(L.total)}</span>${L.error ? `<span class="why">${L.error}</span>` : L.events.length ? `<span class="why">${L.events.join(' · ')}</span>` : ''}</li>`;
+      const M = MODES[L.mode], stops = L.legs.length > 1 ? ` · ${L.legs.length} bends` : '', legs = L.legs.map(k => S.legs[k]);
+      const dead = legs.some(l => l.dead), skipped = legs.every(l => l.skipped);
+      let danger = '';
+      if (D.lv && !L.error && !skipped) {
+        const risk = 1 - legs.reduce((q, l) => q * (1 - (l.risk || 0)), 1), last = legs[legs.length - 1];
+        danger = `<span class="risk">${risk > 0 ? `⚠️ ${risk < 0.01 ? '<1' : Math.round(risk * 100)}% accident risk` : '✅ no accident risk'}${D.lv >= 2 && last.energy != null ? ` · ⚡ ${last.energy}% energy after` : ''}</span>${S.run ? '' : dead ? ' · 💀 You would die of exhaustion on this line. Mix in trains, boats or lifts to rest, or pick a character at home here.' : ''}`;
+      }
+      const why = L.error || [danger, ...L.events].filter(Boolean).join(' · ');
+      return `<li class="${L.error ? 'bad' : ''}${dead ? ' dead' : ''}${L.id === S.sel ? ' sel' : ''}" data-line="${L.id}" role="button" tabindex="0" aria-pressed="${L.id === S.sel}" title="Tap to change how you travel this line"><span>${M.icon}</span><span>Line ${n + 1}: ${M.name} · ${fmtKm(L.km)}${stops}</span><span class="t">${skipped ? '—' : fmtH(L.total)}</span>${why ? `<span class="why">${why}</span>` : ''}</li>`;
     }).join('');
     el.querySelectorAll('li[data-line]').forEach(li => {
       if (S.playing) return;
@@ -357,6 +398,12 @@ function renderLegs() {
     });
   }
   $('total').textContent = fmtH(tripTotal());
+  const D = dangerNow(), P = S.run || S.plan, en = $('energy');
+  en.hidden = !(D.lv >= 2 && P && S.legs.length);
+  if (!en.hidden) {
+    $('energyText').textContent = P.dead ? `⚡ Energy: runs out on line ${S.lines.findIndex(L => L.legs.includes(P.dead.leg)) + 1}` : `⚡ Energy at the finish: ${P.energy}% (lowest ${P.low}%)`;
+    $('energyBar').style.width = `${P.dead ? 0 : P.energy}%`; en.classList.toggle('low', !!P.dead || P.low < 25);
+  }
   const bad = S.legs.some(l => l.error);
   $('go').disabled = !atEnd() || bad || S.playing;
   $('undo').disabled = S.pts.length <= 1 || S.playing;
@@ -376,6 +423,7 @@ function startTrip(trip, no, challenge) {
   S.fair = !!no || !!challenge; $('fair').checked = S.fair; $('fair').disabled = !!challenge; // Fair mode: on for the daily trip, always on in challenges
   if (!challenge && location.hash.startsWith('#c=')) history.replaceState(null, '', location.pathname + location.search);
   S.pts = [{ ll: S.trip.a }]; S.legs = []; S.lines = []; S.sel = null; S.best = null; S.showBest = false; S.anim = null;
+  if (challenge) setDanger(challenge.d || 'off', challenge.dc, true); else setDanger(myDanger.key, myDanger.custom, false);
   renderTripHead(); renderModes(); renderTraveller(); renderChallenge();
   $('tripNo').textContent = challenge ? '⚔️ Challenge' : no ? `Trip #${no}` : 'Practice trip';
   $('names').hidden = true; $('result').hidden = true; $('result').innerHTML = '';
@@ -451,14 +499,27 @@ function solveAsync(a, b, modes, boost) {
 function toast(msg, ms = 1800) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, ms); }
 async function go() {
   if (!atEnd()) return;
-  S.playing = true; renderLegs();
+  S.playing = true;
   if (window.Online) Online.beforeGo();
+  // Danger: roll this trip's accidents now (the same for everyone on the same trip, route and seed).
+  const D = dangerNow();
+  if (D.lv) {
+    const b = boost();
+    S.legs = finalizeLegs(S.pts.slice(1).map((p, k) => evalLeg(p.mode, S.pts[k].ll, p.ll, b)), S.seed);
+    S.run = applyDanger(S.legs, S.seed, D, true); S.lines = linesOf(S.legs, S.pts);
+  }
+  renderLegs();
   const rules = RULES[S.rules];
   const bestP = solveAsync(S.trip.a, S.trip.b, allowedModes(S.rules), boost());
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   $('clock').hidden = false;
-  let clock = 0;
+  let clock = 0, died = false;
   for (const L of S.lines) {
+    if (died) break;
+    // where along this line each accident happens (0 to 1), and whether it ends the trip
+    const hits = L.legs.flatMap((k, j) => [...(S.legs[k].incidents || []).map(inc => ({ at: (j + inc.f) / L.legs.length, text: `${inc.t}${inc.h ? ` · +${fmtH(inc.h)}` : ''}`, end: inc.dead })),
+      ...(S.legs[k].dead && !S.legs[k].incidents.some(i => i.dead) ? [{ at: (j + S.legs[k].dead.f) / L.legs.length, text: S.legs[k].dead.why, end: true }] : [])]).sort((a, b) => a.at - b.at);
+    let shown = 0, ouch = '';
     const l = { ...L, mode: L.mode, seasick: L.legs.some(k => S.legs[k].seasick), extra: L.legs.reduce((s, k) => s + S.legs[k].extra, 0) };
     const M = MODES[l.mode], pts = L.legs.flatMap((k, j) => j ? legPts(S.legs[k]).slice(1) : legPts(S.legs[k]));
     const fun = l.events.find(e => !/sleep and rest| to (rent|hire|catch|board|inflate|rig|lay out|harness|load|get ready)/.test(e));
@@ -466,17 +527,22 @@ async function go() {
     const dur = reduce ? 200 : Math.min(3800, 1300 + l.km * 0.25), t0 = performance.now();
     await new Promise(done => {
       const step = now => {
-        const f = Math.min(1, Math.max(0, (now - t0) / dur)), pos = f * (pts.length - 1), k = Math.min(pts.length - 2, Math.floor(pos)), r = pos - k;
+        let f = Math.min(1, Math.max(0, (now - t0) / dur));
+        while (shown < hits.length && hits[shown].at <= f) {
+          const h = hits[shown++]; toast(h.text, 2600); ouch = h.end ? '💀' : '💥';
+          if (h.end) { f = h.at; died = true; break; }
+        }
+        const pos = f * (pts.length - 1), k = Math.min(pts.length - 2, Math.floor(pos)), r = pos - k;
         const ll = [pts[k][0] + (pts[k + 1][0] - pts[k][0]) * r, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * r];
-        S.anim = { ll, mode: l.mode, phase: now / 1000, sick: l.seasick ? '🤢' : l.extra && M.human ? '😵' : '' };
+        S.anim = { ll, mode: l.mode, phase: now / 1000, sick: ouch || (l.seasick ? '🤢' : l.extra && M.human ? '😵' : '') };
         $('clock').textContent = `🕑 ${fmtH(clock + l.total * f)}`;
-        draw(); f < 1 ? requestAnimationFrame(step) : done();
+        draw(); f < 1 && !died ? requestAnimationFrame(step) : setTimeout(done, died ? 1200 : 0);
       };
       requestAnimationFrame(step);
     });
     clock += l.total;
   }
-  $('clock').textContent = `🏁 ${fmtH(clock)}`;
+  $('clock').textContent = died ? '💀 Trip over' : `🏁 ${fmtH(clock)}`;
   toast('Calculating the best route…', 8000);
   const best = await bestP;
   $('toast').hidden = true;
@@ -492,27 +558,32 @@ function showResult(best) {
     const missing = rules.modes.filter(m => (per[m] || 0) < rules.min);
     if (missing.length) dq = `Disqualified: you need at least ${rules.min}h of ${missing.map(m => MODES[m].name.toLowerCase()).join(' and ')}.`;
   }
+  const run = S.run, dead = run && run.dead, D = dangerNow();
+  if (dead && !dq) dq = `💀 Your traveller didn't make it: ${dead.why.replace(/^💀 /, '').toLowerCase()} on line ${S.lines.findIndex(L => L.legs.includes(dead.leg)) + 1}. Try a safer route, or turn the danger down.`;
   const par = best ? best.hours : null;
-  const g = dq ? 'DQ' : par ? grade(par / you) : '?';
+  const g = dead ? 'DNF' : dq ? 'DQ' : par ? grade(par / you) : '?';
+  const lost = run ? run.incidents.reduce((s, i) => s + i.h, 0) : 0;
   const icons = []; S.legs.forEach(l => { if (icons[icons.length - 1] !== MODES[l.mode].icon) icons.push(MODES[l.mode].icon); });
   let earned = '';
   if (!dq) {
-    const ctx = { total: you, grade: g, rules: S.rules, day: dailyTrip(Date.now()).no };
+    const ctx = { total: you, grade: g, rules: S.rules, day: dailyTrip(Date.now()).no, lv: D.lv, incidents: run ? run.incidents.length : 0 };
     const r = recordTrip(S.progress, S.legs, ctx, `${S.tripNo || 'p' + S.seed}|${S.rules}`);
     S.progress = r.progress; saveProgress(); renderTraveller();
     earned = r.newBadges.map(B => `<li>${B.icon} New badge: <b>${B.name}</b></li>`).join('') +
       r.gains.map(x => `<li>${MODES[x.mode].icon} ${MODES[x.mode].name} stat up to +${x.to}%${S.fair ? ' (used when Fair mode is off)' : ''}</li>`).join('');
   }
-  const share = `Vamos ${S.challenge ? '⚔️ challenge' : S.tripNo ? '#' + S.tripNo : '(practice)'} · ${rules.name} · ${S.fair ? 'Fair mode' : 'Stats on'}\n${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]}\n${S.char !== 'none' ? CHARS[S.char].icon + ' ' : ''}${icons.join('')} ${fmtH(you)}\nBest route ${par ? fmtH(par) : '—'} · Grade ${g}`;
+  const share = `Vamos ${S.challenge ? '⚔️ challenge' : S.tripNo ? '#' + S.tripNo : '(practice)'} · ${rules.name} · ${S.fair ? 'Fair mode' : 'Stats on'}${D.lv ? ` · Danger: ${S.danger === 'custom' ? 'Custom' : DANGER[S.danger].name}` : ''}\n${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]}\n${S.char !== 'none' ? CHARS[S.char].icon + ' ' : ''}${icons.join('')} ${dead ? '💀 DNF' : fmtH(you)}${run && run.incidents.length ? ` · ${run.incidents.map(i => i.t.split(' ')[0]).join('')}` : ''}\nBest route ${par ? fmtH(par) : '—'} · Grade ${g}`;
   const bestLine = best ? best.runs.filter(r => r.km >= 5 || MODES[r.mode].terrain === 'space').map(r => `${MODES[r.mode].icon} ${fmtKm(r.km)}`).join(' → ') : 'No route exists under these rules.';
   const note = g === 'A+' ? 'You beat the computer. Its route assumes full rest days, so short hops can sneak under it.' : '';
   $('result').innerHTML = `<div class="result">
-    <div class="grade"><div class="g">${g}</div><div class="cmp">
-      <span>Your trip</span><span class="t">${fmtH(you)}</span>
+    <div class="grade"><div class="g${g.length > 2 ? ' small' : ''}">${g}</div><div class="cmp">
+      <span>Your trip</span><span class="t">${dead ? 'Didn\'t finish' : fmtH(you)}</span>
       <span>Best route</span><span class="t">${par ? fmtH(par) : '—'}</span></div></div>
     ${dq ? `<p class="hint" style="color:var(--stamp);font-weight:700">${dq}</p>` : ''}
     ${note ? `<p class="hint">${note}</p>` : ''}
-    <p class="hint">Graded against the best route at ${S.fair ? 'base speeds (Fair mode)' : 'your stats'}.</p>
+    ${run && run.incidents.length ? `<div class="label">Bad luck on the way${lost ? ` · +${fmtH(lost)}` : ''}</div><ul class="incidents">${run.incidents.map(i => `<li>${esc(i.t)}${i.h ? ` · +${fmtH(i.h)}` : ''}${i.dead ? ' · 💀' : ''}</li>`).join('')}</ul>` : D.lv && run ? '<p class="hint">🍀 No accidents this time.</p>' : ''}
+    ${D.lv >= 2 && run && !dead ? `<p class="hint">⚡ Finished with ${run.energy}% energy (lowest ${run.low}%).</p>` : ''}
+    <p class="hint">Graded against the best route at ${S.fair ? 'base speeds (Fair mode)' : 'your stats'}${D.lv ? ', which assumes no accidents' : ''}.</p>
     ${earned ? `<ul class="events earned">${earned}</ul>` : ''}
     <div id="onlineResult"></div>
     <div class="label">Best route (dotted on the map)</div><p class="hint">${bestLine}</p>
@@ -527,10 +598,10 @@ function showResult(best) {
   const mine = !dq && S.fair ? { n: myName(), h: you, g, p: encodeRoute(S.pts), c: S.char } : null;
   if (S.challenge && mine) { S.challenge.res = mergeResults(S.challenge.res, [mine]); saveBoard(S.challenge); }
   S.finished = true; renderChallenge(); draw();
-  if (window.Online) Online.finished(you, par, dq);
+  if (window.Online) Online.finished(dead ? DEAD_H : you, par, dead ? '' : dq);
   $('myName').oninput = e => { try { localStorage.setItem('vamos.name', e.target.value.trim()); } catch {} if (mine && S.challenge) { mine.n = myName(); saveBoard(S.challenge); renderChallenge(); } };
   $('sendCh').onclick = () => {
-    const name = myName(), c = S.challenge || { v: 1, id: Math.random().toString(36).slice(2, 10).padEnd(6, '0'), f: [S.trip.from, ...S.trip.a], t: [S.trip.to, ...S.trip.b], r: S.rules, s: S.seed, res: [] };
+    const name = myName(), c = S.challenge || { v: 1, id: Math.random().toString(36).slice(2, 10).padEnd(6, '0'), f: [S.trip.from, ...S.trip.a], t: [S.trip.to, ...S.trip.b], r: S.rules, s: S.seed, d: S.danger, dc: S.dcustom, res: [] };
     if (mine) { mine.n = name; c.res = mergeResults(c.res.filter(r => r !== mine), [mine]); }
     S.challenge = c; saveBoard(c); renderChallenge();
     const url = `${location.href.split('#')[0]}#c=${encodeChallenge(c)}`, text = `Vamos challenge: ${S.trip.from} → ${S.trip.to}. ${mine ? `I did it in ${fmtH(you)}. ` : ''}Can you beat it?`;
@@ -568,7 +639,7 @@ function renderChallenge() {
   const c = S.challenge, el = $('challenge');
   el.hidden = !c; if (!c) return;
   const me = myName().toLowerCase(), top = c.res[0];
-  el.innerHTML = `<div class="label">⚔️ Challenge · ${esc(RULES[c.r].name)} · Fair mode</div>
+  el.innerHTML = `<div class="label">⚔️ Challenge · ${esc(RULES[c.r].name)} · Fair mode${c.d && c.d !== 'off' ? ` · Danger: ${c.d === 'custom' ? 'Custom' : DANGER[c.d].name}` : ''}</div>
     <p class="hint">${top ? `Beat ${esc(top.n)}'s ${fmtH(top.h)}.` : 'Be the first on the board.'} ${S.finished ? '' : 'Friends\' routes show once you finish.'}</p>
     ${c.res.length ? `<ol class="board">${c.res.map((r, k) => `<li class="${r.n.toLowerCase() === me ? 'me' : ''}"><span>${['🥇', '🥈', '🥉'][k] || k + 1}</span><span>${S.finished && r.p ? `<i style="background:${GHOST[k % GHOST.length]}"></i>` : ''}${r.c && r.c !== 'none' ? CHARS[r.c].icon + ' ' : ''}${esc(r.n)}</span><span class="t">${fmtH(r.h)} · ${r.g}</span></li>`).join('')}</ol>` : ''}
     ${S.finished && c.res.some(r => r.p) ? `<label class="fair"><input type="checkbox" id="ghosts" ${S.ghosts ? 'checked' : ''}><span>Show everyone's routes</span></label>` : ''}`;
@@ -699,7 +770,7 @@ $('tool').onclick = () => { S.tool = S.tool === 'draw' ? 'tap' : 'draw'; $('tool
 $('go').onclick = go;
 $('newTrip').onclick = () => { let k; do { k = Math.floor(Math.random() * TRIPS.length); } while (k === S.trip.idx); setTrip(k, 0); };
 $('rules').innerHTML = Object.entries(RULES).map(([k, r]) => `<option value="${k}">${r.name}</option>`).join('');
-$('rules').onchange = e => { S.rules = e.target.value; $('rulesNote').textContent = RULES[S.rules].note; routeChanged(); };
+$('rules').onchange = e => { S.rules = e.target.value; $('rulesNote').textContent = RULES[S.rules].note; if (S.danger === 'custom') renderCustomDanger(); routeChanged(); };
 window.addEventListener('resize', resize);
 
 // ---------- boot ----------

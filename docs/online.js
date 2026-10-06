@@ -106,12 +106,14 @@ function rankedState() {
   if (O.today) return { ok: false, why: `You scored ${O.today.points} on today's ranked trip. Come back tomorrow.` };
   if (S.progress.done.some(k => k.startsWith(day + '|'))) return { ok: false, why: 'You already finished today\'s trip (and saw the best route), so this try is casual.' };
   if (S.rules !== 'classic') return { ok: false, why: 'Ranked uses Classic rules. Switch rules to count this try.' };
+  if (S.danger !== 'off') return { ok: false, why: 'Ranked is played with danger Off. Switch it off to count this try.' };
   if (!S.fair) return { ok: false, why: 'Ranked needs Fair mode on.' };
   if (NOT_RANKED.includes(S.char)) return { ok: false, why: `${CHARS[S.char].name} is too fast for ranked. Pick another character.` };
   return { ok: true, why: '🏆 Ranked: your first finish today scores up to 1,000 points.' };
 }
 function onlineTripChanged() { const n = $('oRankNote'); if (n) n.textContent = rankedState().why || (S.match ? '⚔️ 1v1 match in progress.' : ''); }
 function onlineBeforeGo() { S.rankedTry = rankedState().ok; }
+const hrs = h => h >= DEAD_H ? '💀 DNF' : fmtH(h);
 const pointsFor = (you, best) => Math.min(1000, Math.round(1000 * best / you));
 
 // Called by showResult. Adds the ranked score or the 1v1 outcome under the result.
@@ -146,42 +148,44 @@ async function nameIds(ms) {
 const nm = id => esc(O.names.get(id) || '?');
 const tripOK = t => t && Array.isArray(t.f) && Array.isArray(t.t) && t.f.length === 3 && t.t.length === 3 && RULES[t.r] &&
   [t.f[1], t.f[2], t.t[1], t.t[2]].every(x => typeof x === 'number' && isFinite(x)) && Math.abs(t.f[1]) <= 90 && Math.abs(t.t[1]) <= 90;
-const tripText = t => tripOK(t) ? `${esc(cleanName(t.f[0], 'Start').split(',')[0])} → ${esc(cleanName(t.t[0], 'Finish').split(',')[0])} · ${esc(RULES[t.r].name)}` : 'Broken trip';
+const tripText = t => tripOK(t) ? `${esc(cleanName(t.f[0], 'Start').split(',')[0])} → ${esc(cleanName(t.t[0], 'Finish').split(',')[0])} · ${esc(RULES[t.r].name)}${t.d && t.d !== 'off' ? ` · ⚠️ ${t.d === 'custom' ? 'Custom' : DANGER[t.d] ? DANGER[t.d].name : ''}` : ''}` : 'Broken trip';
 function matchOutcome(m) {
   if (!m) return '';
   const meHost = O.me && m.host === O.me.id, mine = meHost ? m.host_hours : m.guest_hours, theirs = meHost ? m.guest_hours : m.host_hours;
   const them = meHost ? (m.guest ? nm(m.guest) : m.invited ? nm(m.invited) : 'someone from the lobby') : nm(m.host);
   if (m.status === 'done') {
     const won = mine < theirs, tie = mine === theirs;
-    return `<div class="ranked">${tie ? '🤝 A tie' : won ? '🏆 You won' : '😅 You lost'} against ${them}: ${fmtH(mine)} vs ${fmtH(theirs)}.</div>`;
+    return `<div class="ranked">${tie ? '🤝 A tie' : won ? '🏆 You won' : '😅 You lost'} against ${them}: ${hrs(mine)} vs ${hrs(theirs)}.</div>`;
   }
-  return `<p class="hint">⚔️ Time sent${mine != null ? ` (${fmtH(mine)})` : ''}. Waiting for ${them} to finish.</p>`;
+  return `<p class="hint">⚔️ Time sent${mine != null ? ` (${hrs(mine)})` : ''}. Waiting for ${them} to finish.</p>`;
 }
 function playMatch(m, role) {
   const t = m.trip; if (!tripOK(t)) { toast('That match trip is broken'); return; }
   S.rules = t.r; $('rules').value = t.r; $('rulesNote').textContent = RULES[t.r].note;
   startTrip({ from: cleanName(t.f[0], 'Start'), a: [t.f[1], t.f[2]], to: cleanName(t.t[0], 'Finish'), b: [t.t[1], t.t[2]] }, 0);
   S.match = { id: m.id, role }; S.seed = typeof t.s === 'number' ? t.s : 1;
+  { const dc = t.d === 'custom' ? cleanCustom(t.dc) : null; setDanger(DANGER[t.d] && Object.hasOwn(DANGER, t.d) ? t.d : dc ? 'custom' : 'off', dc, true); }
   S.fair = true; $('fair').checked = true; $('fair').disabled = true; changedStats();
   const rival = role === 'host' ? (m.invited ? nm(m.invited) : 'the lobby') : nm(m.host);
   $('tripNo').textContent = `⚔️ 1v1 vs ${O.names.get(role === 'host' ? m.invited : m.host) || 'lobby'}`;
-  toast(role === 'host' ? `Posted. Play it now: your time is the one ${rival} has to beat.` : `Match on! Beat ${rival}${m.host_hours ? `'s ${fmtH(m.host_hours)}` : ''}.`, 3500);
+  toast(role === 'host' ? `Posted. Play it now: your time is the one ${rival} has to beat.` : `Match on! Beat ${rival}${m.host_hours ? `'s ${hrs(m.host_hours)}` : ''}.`, 3500);
   closeOnline(); onlineTripChanged();
 }
 // Shows a finished match on the map: both routes, like a friend challenge board.
 async function showMatch(m) {
   const { data } = await O.sb.rpc('match_routes', { match_id: m.id });
   const r = (data && data[0]) || {}, t = m.trip, d = m.host_hours - m.guest_hours, tag = x => d === 0 ? 'tie' : (x < 0) === (d < 0) ? 'won' : 'lost';
-  const c = { v: 1, id: 'm' + m.id, f: t.f, t: t.t, r: t.r, s: t.s || 1, res: [
+  const c = { v: 1, id: 'm' + m.id, f: t.f, t: t.t, r: t.r, s: t.s || 1, d: DANGER[t.d] ? t.d : 'off', dc: cleanCustom(t.dc), res: [
     { n: O.names.get(m.host) || '?', h: m.host_hours, g: tag(-1), p: r.host_route || '', c: m.host_char || 'none' },
     { n: O.names.get(m.guest) || '?', h: m.guest_hours, g: tag(1), p: r.guest_route || '', c: m.guest_char || 'none' },
   ].sort((a, b) => a.h - b.h) };
+  if (c.d === 'off' && c.dc) c.d = 'custom';
   S.rules = t.r; $('rules').value = t.r;
   startTrip({ from: cleanName(t.f[0], 'Start'), a: [t.f[1], t.f[2]], to: cleanName(t.t[0], 'Finish'), b: [t.t[1], t.t[2]] }, 0, c);
   S.finished = true; renderChallenge(); draw(); closeOnline();
 }
 async function postMatch(invitedName) {
-  const t = { f: [S.trip.from, +S.trip.a[0].toFixed(3), +S.trip.a[1].toFixed(3)], t: [S.trip.to, +S.trip.b[0].toFixed(3), +S.trip.b[1].toFixed(3)], r: S.rules, s: 1 + Math.floor(Math.random() * 1e6) };
+  const t = { f: [S.trip.from, +S.trip.a[0].toFixed(3), +S.trip.a[1].toFixed(3)], t: [S.trip.to, +S.trip.b[0].toFixed(3), +S.trip.b[1].toFixed(3)], r: S.rules, s: 1 + Math.floor(Math.random() * 1e6), d: S.danger, dc: S.dcustom };
   let invited = null;
   if (invitedName) {
     const { data } = await O.sb.from('profiles').select('id,username').eq('username', invitedName).maybeSingle();
@@ -278,7 +282,7 @@ async function renderRankings(body) {
   } else {
     const { data } = await O.sb.from('runs').select('user_id,points,hours,char').eq('day', day).order('points', { ascending: false }).order('hours').limit(50);
     await nameIds(data || []);
-    rows = (data || []).map(r => ({ n: O.names.get(r.user_id) || '?', icon: CHARS[r.char] && r.char !== 'none' ? CHARS[r.char].icon + ' ' : '', right: `${fmtH(r.hours)} · ${r.points} pts` }));
+    rows = (data || []).map(r => ({ n: O.names.get(r.user_id) || '?', icon: CHARS[r.char] && r.char !== 'none' ? CHARS[r.char].icon + ' ' : '', right: `${hrs(r.hours)} · ${r.points} pts` }));
   }
   const me = O.me && O.me.username;
   body.querySelector('.hint').outerHTML = rows.length
@@ -323,19 +327,19 @@ async function renderLobby(body) {
   const item = (m, actions, note) => `<li><div><b>${tripText(m.trip)}</b><small>${note} · ${ago(m.created_at)}</small></div><div class="row">${actions}</div></li>`;
   const state = m => {
     const meHost = m.host === O.me.id, them = meHost ? (m.guest ? nm(m.guest) : m.invited ? nm(m.invited) : 'anyone') : nm(m.host);
-    if (m.status === 'done') { const mine = meHost ? m.host_hours : m.guest_hours, th = meHost ? m.guest_hours : m.host_hours; return [`<button class="btn small" data-see="${m.id}">Show routes</button>`, `vs ${them}: ${mine < th ? '🏆 you won' : mine > th ? 'you lost' : 'tie'}, ${fmtH(mine)} vs ${fmtH(th)}`]; }
-    if (myTurn(m)) return [`<button class="btn small" data-play="${m.id}">Play</button>`, `vs ${them} · your turn${!meHost && m.host_hours ? `, beat ${fmtH(m.host_hours)}` : ''}`];
+    if (m.status === 'done') { const mine = meHost ? m.host_hours : m.guest_hours, th = meHost ? m.guest_hours : m.host_hours; return [`<button class="btn small" data-see="${m.id}">Show routes</button>`, `vs ${them}: ${mine < th ? '🏆 you won' : mine > th ? 'you lost' : 'tie'}, ${hrs(mine)} vs ${hrs(th)}`]; }
+    if (myTurn(m)) return [`<button class="btn small" data-play="${m.id}">Play</button>`, `vs ${them} · your turn${!meHost && m.host_hours ? `, beat ${hrs(m.host_hours)}` : ''}`];
     if (m.status === 'open') return [`<button class="btn small" data-cancel="${m.id}">Cancel</button>`, `waiting for ${them} to accept`];
     return ['', `vs ${them} · waiting for them to finish`];
   };
   body.innerHTML = `<div class="lobby">
     ${O.me ? `<div class="post"><div class="label">Post a 1v1</div>
-      <p class="hint">Uses the trip on your map now: <b>${esc(S.trip.from.split(',')[0])} → ${esc(S.trip.to.split(',')[0])}</b> · ${esc(RULES[S.rules].name)} · Fair mode. You play first, then your rival tries to beat your time.</p>
+      <p class="hint">Uses the trip on your map now: <b>${esc(S.trip.from.split(',')[0])} → ${esc(S.trip.to.split(',')[0])}</b> · ${esc(RULES[S.rules].name)} · Fair mode${S.danger !== 'off' ? ` · Danger: ${S.danger === 'custom' ? 'Custom' : DANGER[S.danger].name}` : ''}. You play first, then your rival tries to beat your time.</p>
       <div class="row"><input class="txt" id="oInvite" maxlength="16" placeholder="Username (empty = anyone)" aria-label="Invite a player by username"><button class="btn small" id="oPost">Post</button></div>
       <p class="hint" id="oPostMsg" aria-live="polite"></p></div>` : '<p class="hint">Sign in to post or accept a 1v1.</p>'}
-    ${invites.length ? `<div class="label">Invites for you</div><ul class="mlist">${invites.map(m => item(m, `<button class="btn small" data-accept="${m.id}">Accept</button>`, `from ${nm(m.host)}${m.host_hours ? `, beat ${fmtH(m.host_hours)}` : ''}`)).join('')}</ul>` : ''}
+    ${invites.length ? `<div class="label">Invites for you</div><ul class="mlist">${invites.map(m => item(m, `<button class="btn small" data-accept="${m.id}">Accept</button>`, `from ${nm(m.host)}${m.host_hours ? `, beat ${hrs(m.host_hours)}` : ''}`)).join('')}</ul>` : ''}
     <div class="label">Open games</div>
-    ${lobby.length ? `<ul class="mlist">${lobby.map(m => item(m, O.me ? `<button class="btn small" data-accept="${m.id}">Accept</button>` : '', `by ${nm(m.host)}${m.host_hours ? `, time to beat ${fmtH(m.host_hours)}` : ''}`)).join('')}</ul>` : '<p class="hint">No open games right now. Post one and check back.</p>'}
+    ${lobby.length ? `<ul class="mlist">${lobby.map(m => item(m, O.me ? `<button class="btn small" data-accept="${m.id}">Accept</button>` : '', `by ${nm(m.host)}${m.host_hours ? `, time to beat ${hrs(m.host_hours)}` : ''}`)).join('')}</ul>` : '<p class="hint">No open games right now. Post one and check back.</p>'}
     ${O.me && yours.length ? `<div class="label">Your games</div><ul class="mlist">${yours.map(m => { const [a, n] = state(m); return item(m, a, n); }).join('')}</ul>` : ''}
     <p class="hint">This list refreshes every 15 seconds while it's open.</p></div>`;
   const byId = id => [...lobby, ...my].find(m => m.id === +id);

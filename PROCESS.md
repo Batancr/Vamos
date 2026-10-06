@@ -7,6 +7,7 @@
 - **6 Oct 2026:** satellite view, Look around links, custom trips and friend challenges with a leaderboard.
 - **6 Oct 2026:** streets layer and deeper zoom, stop points (ports, paragliding hills, balloon sites) with sled and hill zones, auto-stop for legs, and ten characters.
 - **6 Oct 2026:** biome layer (desert, grassland, jungle, ice and snow) with terrain characters (Rabbit, Camel, Monkey, Penguin; Fox, Mountaineer and Relic Hunter got terrain strengths), on/off switches for each stop kind and terrain shading, and online play on Supabase: accounts, ranked daily trips and a 1v1 lobby.
+- **6 Oct 2026:** danger levels (Off to Nightmare, plus Custom odds), accidents per mode, an energy meter with exhaustion, and Zoo Bonanza with three animal mounts (horse, camel ride, elephant). Built from Alexander's brainstorm; a browser AI's write-up was used only where it matched it.
 
 ## The gap (checked 5 Oct 2026)
 - The closest existing game is [Georoute](https://georoutegame.com/): you connect cities by car, boat, ship, plane or helicopter and score for the fastest or cheapest route. It works in city-to-city hops.
@@ -48,6 +49,12 @@
 - **Online play: Supabase (chosen by Alexander, 6 Oct 2026).** A static site can't hold accounts, so this is the one server piece. Reads are public; writes are limited by row-level security, and 1v1 updates go through database functions that check whose turn it is. Routes stay hidden until a match is over (and always for ranked), so nobody can copy them. The rules were tested on a local Postgres 16 with a stand-in for Supabase's auth schema, and the browser side with a fake Supabase client; not yet against a real Supabase project.
 - **Ranked = the daily trip, Classic rules, Fair mode, first finish only.** One shared puzzle a day keeps it fair. Finishing it casually first (and seeing the best route) makes the ranked try casual. Genie, Thunder God and Caped Hero fly straight there, so they're casual only.
 - **The 1v1 lobby is turn-based, not live.** The host posts the trip on their map and plays first; whoever accepts plays it later and sees who won. The lobby refreshes every 15 seconds while open and the game checks for results every minute. Live races would need realtime channels; possible later.
+
+- **Danger is planned, luck is rolled.** Energy is a forecast you can see while drawing (it's deterministic), so you can plan rests by mixing in trains, boats and lifts. Accidents are rolled when you press Vamos!, from the trip seed and the exact route, so everyone on the same challenge or 1v1 with the same route gets the same luck. The best route still assumes no accidents, which the result card says.
+- **Energy model.** On-foot and animal modes use energy per moving hour (walk 3%, run 8%, swim 8%, and so on); every resting hour gives back 2.5%, and sitting on trains, boats and lifts gives back 1.5% an hour. Walking 10 h a day just about breaks even; long swims don't. From Hard, deserts and ice sheets make on-foot travel 60% more tiring unless your character is at home there. On Nightmare the Rabbit tires twice as fast and the Fox can get spooked. The Caped Hero never tires. Everything here is a game-balance guess.
+- **Left out of the browser AI's write-up:** items and shelters that revive you, and the Triathlon "double drop after a crash" rule. Both could come later.
+- **Ranked stays Off.** Danger adds luck, and ranked is meant to measure planning, so ranked tries need danger Off. Challenges and 1v1s carry their danger setting and lock it.
+- **New modes are added at the end of the list,** because route codes in old challenge links store each mode's position.
 
 ## Game numbers and where they come from
 These are game-balance choices unless a source is named. Confidence: H = high, M = medium, L = low or invented for fun.
@@ -100,6 +107,7 @@ Data sources and licences are in `data/raw/README.md`.
 - [ ] Test online play against the real Supabase project once it exists.
 - [ ] Username filter is a short word list; consider a proper one and a report button.
 - [ ] Biomes: replace hand-typed boxes with a real land-cover map.
+- [ ] Danger: tune accident odds and energy rates after people play; consider rest stops or items, and a ranked danger ladder.
 - [ ] Very long freehand routes make long challenge links; consider compressing them if chat apps cut them off.
 - [ ] Add a minimum time per mode as a custom setting (Triathlon already uses 1 h).
 - [ ] Possibly let legs wrap across the Pacific.
