@@ -113,9 +113,116 @@ test('best route Inverness → Marrakesh with everything allowed is 1–3 days',
   const r = V.solveRoute([57.48, -4.22], [31.63, -7.99], V.RULES.classic.modes);
   assert.ok(r && r.hours > 24 && r.hours < 72, `got ${r && r.hours}`);
 });
-test('best route Inverness → Marrakesh on human power has to swim', () => {
+test('best route Inverness → Marrakesh on human power has to cross water by kayak or swimming', () => {
   const r = V.solveRoute([57.48, -4.22], [31.63, -7.99], V.RULES.human.modes);
+  assert.ok(r && r.runs.some(x => x.mode === 'swim' || x.mode === 'kayak'));
+});
+test('without a kayak, the same trip has to swim', () => {
+  const r = V.solveRoute([57.48, -4.22], [31.63, -7.99], ['walk', 'run', 'bike', 'skate', 'swim']);
   assert.ok(r && r.runs.some(x => x.mode === 'swim'));
+});
+
+// ---------- swimming, lakes and the new modes ----------
+test('swimming is the average Channel swimmer: 33.2 km in 13.6 h ≈ 2.4 km/h', () => {
+  assert.strictEqual(V.speedAt('swim', 0, 0, 0), 2.4);
+});
+test('sailboat: 10 km/h ± 8 with the wind, never below 4', () => {
+  assert.strictEqual(V.speedAt('sail', 0, 45, 1), 18);  // westerlies, heading east: 10 + 8
+  assert.strictEqual(V.speedAt('sail', 0, 45, -1), 4);  // 10 − 8 = 2, floored at 4 (tacking)
+  assert.strictEqual(V.speedAt('sail', 0, 10, -1), 18); // trade winds blow west
+});
+test('lakes: Victoria and Superior are lake, the Caspian is sea, Geneva is too small to show', () => {
+  assert.ok(V.isLake(V.cellOf(-1, 33)));
+  assert.ok(V.isLake(V.cellOf(47.7, -87.5)));
+  const casp = V.cellOf(42, 50);
+  assert.ok(!V.isLand(casp) && !V.isLake(casp));
+  assert.ok(V.isLand(V.cellOf(46.45, 6.55)));
+});
+test('kayak across the Strait of Dover: 40.5 km at 6 km/h ≈ 6.75 h', () => {
+  const leg = V.evalLeg('kayak', [51.12, 1.33], [50.96, 1.85]);
+  assert.strictEqual(leg.error, null);
+  near(leg.moving, leg.km / 6, 0.001); // the leg is summed in short steps, so allow a hair of rounding
+});
+test('paraglider: needs a hill to launch, lands on land, flies at most 150 km', () => {
+  assert.match(V.evalLeg('glide', [52.0, 5.5], [52.0, 6.3]).error, /launch from hills/); // flat Netherlands
+  assert.match(V.evalLeg('glide', [52.3, 5.0], [52.3, 6.0]).error, /open water/);      // starts on the IJsselmeer
+  assert.strictEqual(V.evalLeg('glide', [46.68, 7.86], [46.9, 8.6]).error, null);       // Interlaken to Lucerne, 61 km
+  assert.match(V.evalLeg('glide', [46.68, 7.86], [48.5, 10.5]).error, /150 km/);        // 283 km
+});
+test('dog sled: only on snow, so the Kansas plains fail and Greenland works', () => {
+  assert.match(V.evalLeg('sled', [40, -100], [40, -99]).error, /snow/);
+  const leg = V.evalLeg('sled', [72, -40], [72, -30]);
+  assert.strictEqual(leg.error, null);
+  assert.ok(leg.ice);
+});
+test('hitchhiking luck: 0–6 h in 15 min steps, the same for everyone on the same trip', () => {
+  const w = []; for (let k = 0; k < 1000; k++) w.push(V.luckWait(5, k));
+  assert.ok(w.every(x => x >= 0 && x <= 6 && x * 4 === Math.round(x * 4)));
+  assert.strictEqual(new Set(w).size, 25); // 0, 0.25 … 6
+  assert.strictEqual(V.luckWait(5, 0), V.luckWait(5, 0));
+  const legs = V.finalizeLegs([V.evalLeg('hitch', [40, -100], [40, -95]), V.evalLeg('hitch', [40, -95], [40, -90])], 5);
+  assert.strictEqual(legs[0].setup, V.luckWait(5, 0)); // every lift is a new wait
+  assert.strictEqual(legs[1].setup, V.luckWait(5, 1));
+});
+test('human cannonball: 2.56 km at 0.15 km/h = 17 h, so one 12 h night and a 1 h reload', () => {
+  const [leg] = V.finalizeLegs([V.evalLeg('cannon', [40, -100], [40, -99.97])]);
+  near(leg.moving, leg.km / 0.15, 0.01);
+  assert.strictEqual(leg.rest, 12);
+  assert.strictEqual(leg.setup, 1);
+  assert.ok(leg.events.some(e => /Fired from the cannon 9 times/.test(e))); // 2.56 / 0.3 = 8.5, rounds to 9
+});
+
+// ---------- progress ----------
+test('stats: swimming 100 km gives +3% (one per 33 km), capped at +15%', () => {
+  assert.strictEqual(V.boostPct('swim', 100), 3);
+  assert.strictEqual(V.boostPct('swim', 1e6), 15);
+  assert.strictEqual(V.boostPct('car', 1e6), 0); // engines don't get fitter
+  assert.deepStrictEqual(V.boostsFrom({ km: { swim: 100, walk: 50 } }), { swim: 0.03 }); // 50 km walking is under 1%
+});
+test('a boost makes that mode faster: 2.4 × 1.03 = 2.472 km/h', () => {
+  near(V.speedAt('swim', 0, 0, 0, { swim: 0.03 }), 2.472, 1e-9);
+});
+test('the best route uses your stats, so faster stats mean a faster par', () => {
+  const a = V.solveRoute([57.48, -4.22], [31.63, -7.99], V.RULES.human.modes);
+  const b = V.solveRoute([57.48, -4.22], [31.63, -7.99], V.RULES.human.modes, { bike: 0.15 });
+  assert.ok(b.hours < a.hours);
+});
+test('recordTrip: km count once per trip, badges once ever', () => {
+  const legs = [{ mode: 'swim', km: 40, error: null }, { mode: 'car', km: 500, error: null }];
+  const one = V.recordTrip(V.emptyProgress(), legs, { total: 30, grade: 'B', rules: 'classic' }, '5|classic');
+  assert.strictEqual(one.progress.km.swim, 40);
+  assert.strictEqual(one.progress.km.car, undefined);
+  assert.deepStrictEqual(one.gains, [{ mode: 'swim', from: 0, to: 1 }]); // floor(40 / 33) = 1
+  assert.deepStrictEqual(one.newBadges.map(b => b.id), ['channel']);
+  const two = V.recordTrip(one.progress, legs, { total: 30, grade: 'B', rules: 'classic' }, '5|classic');
+  assert.strictEqual(two.progress.km.swim, 40);
+  assert.strictEqual(two.gains.length + two.newBadges.length, 0);
+});
+test('backup codes round-trip, reject junk, and merging keeps the best of both', () => {
+  const p = { v: 1, km: { swim: 40, walk: 300 }, badges: { channel: 5 }, done: [] };
+  const q = V.decodeProgress(V.encodeProgress(p));
+  assert.deepStrictEqual(q.km, p.km);
+  assert.deepStrictEqual(q.badges, p.badges);
+  assert.strictEqual(V.decodeProgress('not a code!'), null);
+  const m = V.mergeProgress({ v: 1, km: { swim: 10 }, badges: { moon: 2 }, done: [] }, q);
+  assert.deepStrictEqual(m.km, { swim: 40, walk: 300 });
+  assert.deepStrictEqual(Object.keys(m.badges).sort(), ['channel', 'moon']);
+});
+
+// ---------- drawing lines ----------
+test('simplifying a stroke keeps the corner of an L and drops the wobble', () => {
+  // (0,0) → (100,0) with a 2 px wobble, then up to (100,100). Tolerance 5 px keeps only the 3 corners.
+  const pts = [[0, 0], [25, 2], [50, -2], [75, 1], [100, 0], [100, 50], [101, 100]];
+  assert.deepStrictEqual(V.simplifyPath(pts, 5), [[0, 0], [100, 0], [101, 100]]);
+  assert.deepStrictEqual(V.simplifyPath([[0, 0], [9, 9]], 5), [[0, 0], [9, 9]]);
+});
+test('legs drawn as one line are grouped, with their km and time added up', () => {
+  const pts = [{ ll: [0, 0] }, { line: 1 }, { line: 1 }, { line: 2 }];
+  const legs = [{ mode: 'walk', km: 10, total: 2, error: null, events: ['a'] }, { mode: 'walk', km: 5, total: 1, error: 'x', events: ['a', 'b'] }, { mode: 'car', km: 80, total: 1.5, error: null, events: [] }];
+  const L = V.linesOf(legs, pts);
+  assert.strictEqual(L.length, 2);
+  assert.deepStrictEqual([L[0].legs, L[0].km, L[0].total, L[0].error, L[0].events], [[0, 1], 15, 3, 'x', ['a', 'b']]);
+  assert.deepStrictEqual([L[1].id, L[1].mode, L[1].legs], [2, 'car', [2]]);
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

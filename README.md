@@ -1,15 +1,19 @@
 # Vamos
 
-Get from A to B without a plane. Vamos is a browser game: you get a start and a finish somewhere in the world, and you draw your route on the map one leg at a time, choosing how to travel each leg. The options are walking, running, a bicycle, a skateboard, a car, a train, a boat, swimming, a hot air balloon or a rocket. Then you watch a stick figure make the trip, and you're graded against the best route the game can find.
+Get from A to B without a plane. Vamos is a browser game: you get a start and a finish somewhere in the world, and you draw your route on the map one leg at a time, choosing how to travel each leg. The options are walking, running, a bicycle, a skateboard, a car, hitchhiking, a train, a boat, a sailboat, a kayak, swimming, a paraglider, a dog sled, a hot air balloon, a giant tortoise, a human cannonball or a rocket. Then you watch a stick figure make the trip, and you're graded against the best route the game can find.
 
 Live site (once GitHub Pages is on): https://batancr.github.io/Vamos/
 
 ## How it plays
+- Draw your route as lines: tap to add stops, or press ✏️ and drag to draw freehand. Tap any line (on the map or in the list) to change how you travel it.
 - There's a new trip every day ("Trip #N"), plus random practice trips.
-- Rule sets: Classic, Human power, Triathlon, No wheels, Balloonatic, Rocket Man.
+- Rule sets: Classic, Human power, Triathlon, No wheels, Balloonatic, Rocket Man, Silly season.
 - Real terrain matters. Hills slow walking and cycling, mountains slow cars and trains, balloons crash into peaks above 4,500 m, boats need water and cars need land.
 - People need sleep, so each mode only moves for part of the day. Rockets only fly between real spaceports.
 - Altitude sickness, seasickness and cold water add time.
+- Big lakes (the Great Lakes, Victoria, Baikal, Titicaca and others) are water: swim, kayak or take a boat.
+- Some modes have their own rules. Paragliders launch from hills and fly at most 150 km a leg. Dog sleds need snow. Hitchhiking waits 0 to 6 hours for each lift, and everyone gets the same luck on the daily trip.
+- **Stats and badges.** Doing an activity makes you a little faster at it (up to +15%), and odd feats earn badges. Fair mode, on by default for the daily trip, puts everyone at base speed. With it off, the best route is worked out at your stats too, so the grade measures planning, not hours played. Progress stays in your browser; a backup code moves it to another device.
 - The result card is plain text you can paste anywhere.
 
 ## Run it locally

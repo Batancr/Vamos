@@ -1,4 +1,4 @@
-"""Build the map data in docs/data/ from AWS Terrain Tiles.
+"""Build the map data in docs/data/ from AWS Terrain Tiles and Natural Earth lakes.
 
 Run from the repo root:  python3 tools/build_data.py
 Needs: numpy and pillow (python3 -m pip install numpy pillow), internet access.
@@ -6,19 +6,24 @@ Needs: numpy and pillow (python3 -m pip install numpy pillow), internet access.
 Outputs
   docs/data/grid.bin      gzip of four 720x1440 byte layers (0.25 degree cells, rows 90N->90S, cols 180W->180E):
                           mean land elevation (25 m units, 0 at sea), highest point (40 m units),
-                          elevation spread / roughness (5 m units), land flag (1 = land)
+                          elevation spread / roughness (5 m units), surface (0 = sea, 1 = land, 2 = lake)
   docs/data/basemap.webp  2880x1440 cartoon relief map, same projection (plain lat/lon)
 """
-import gzip, os, sys, urllib.request
+import gzip, json, os, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TILES = os.path.join(ROOT, 'data', 'raw', 'tiles')
 OUT = os.path.join(ROOT, 'docs', 'data')
 Z, N, T = 4, 16, 256  # zoom 4 = 16x16 tiles of 256 px, about 10 km per pixel at the equator
 URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
+LAKES_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_lakes.geojson'
+LAKES = os.path.join(ROOT, 'data', 'raw', 'ne_50m_lakes.geojson')
+# Salt pans that are dry most years, so they stay land.
+DRY = {'Lake Eyre North', 'Lake Eyre South', 'Lake Frome', 'Lake Gairdner', 'Lake Torrens',
+       'Lake Mackay', 'Lake Disappointment', 'Lake Barlee'}
 
 
 def fetch(xy):
@@ -55,15 +60,35 @@ def to_latlon(m, per_deg=16):
     return E
 
 
-def grid(E):
+def lake_mask(shape, per_deg=16):
+    """Natural Earth 1:50m lakes drawn onto the same lat/lon grid as E (True = lake water)."""
+    if not os.path.exists(LAKES):
+        urllib.request.urlretrieve(LAKES_URL, LAKES)
+    img = Image.new('L', (shape[1], shape[0]), 0)
+    d = ImageDraw.Draw(img)
+    xy = lambda ring: [((lon + 180) * per_deg, (90 - lat) * per_deg) for lon, lat in ring]
+    for f in json.load(open(LAKES))['features']:
+        if f['properties'].get('name') in DRY or not f['geometry']:
+            continue
+        g = f['geometry']
+        for poly in (g['coordinates'] if g['type'] == 'MultiPolygon' else [g['coordinates']]):
+            d.polygon(xy(poly[0]), fill=1)
+            for hole in poly[1:]:  # islands in the lake
+                d.polygon(xy(hole), fill=0)
+    return np.asarray(img).astype(bool)
+
+
+def grid(E, lake):
     C = 4
-    b = E.reshape(E.shape[0] // C, C, E.shape[1] // C, C)
+    blk = lambda a: a.reshape(a.shape[0] // C, C, a.shape[1] // C, C)
+    b, lk = blk(E), blk(lake)
     mean, mx, sd = b.mean(axis=(1, 3)), b.max(axis=(1, 3)), b.std(axis=(1, 3))
-    land = (b > 0).mean(axis=(1, 3)) >= 0.5
+    land = ((b > 0) & ~lk).mean(axis=(1, 3)) >= 0.5
+    surface = np.where(land, 1, np.where(lk.mean(axis=(1, 3)) >= 0.25, 2, 0)).astype(np.uint8)
     ec = np.where(land, np.clip(np.round(np.maximum(mean, 0) / 25), 0, 255), 0).astype(np.uint8)
     mxc = np.clip(np.round(np.maximum(mx, 0) / 40), 0, 255).astype(np.uint8)
     rc = np.clip(np.round(sd / 5), 0, 255).astype(np.uint8)
-    buf = ec.tobytes() + mxc.tobytes() + rc.tobytes() + land.astype(np.uint8).tobytes()
+    buf = ec.tobytes() + mxc.tobytes() + rc.tobytes() + surface.tobytes()
     with open(os.path.join(OUT, 'grid.bin'), 'wb') as f:
         f.write(gzip.compress(buf, 9))
 
@@ -82,8 +107,9 @@ def ramp(v, stops):
     return out
 
 
-def basemap(E):
+def basemap(E, lake):
     e = E.reshape(E.shape[0] // 2, 2, E.shape[1] // 2, 2).mean(axis=(1, 3))
+    lk = lake.reshape(lake.shape[0] // 2, 2, lake.shape[1] // 2, 2).mean(axis=(1, 3)) >= 0.5
     es = blur(np.where(e > 0, e, 0), 3)[:e.shape[0], :e.shape[1]]
     gy, gx = np.gradient(es)
     shade = np.clip(1 + (-gx + gy) / 90, 0.7, 1.25)
@@ -96,12 +122,14 @@ def basemap(E):
     seac = ramp(e, [(-8000, (70, 128, 160)), (-4000, (102, 160, 186)), (-200, (150, 200, 214)), (0, (176, 216, 224))])
     landc = np.where(ice[..., None], np.array([238, 244, 247]) * np.ones(e.shape + (3,)), landc)
     rgb = np.where((e > 0)[..., None], landc * shade[..., None], seac)
+    rgb = np.where(lk[..., None], np.array([150, 200, 214]) * np.ones(e.shape + (3,)), rgb)
     Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).save(os.path.join(OUT, 'basemap.webp'), quality=78, method=6)
 
 
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     E = to_latlon(mosaic())
-    grid(E)
-    basemap(E)
+    lake = lake_mask(E.shape)
+    grid(E, lake)
+    basemap(E, lake)
     print('Wrote', os.path.join(OUT, 'grid.bin'), 'and basemap.webp')

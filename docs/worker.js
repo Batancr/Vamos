@@ -3,5 +3,5 @@ if (typeof solveRoute === 'undefined') importScripts('phys.js');
 onmessage = e => {
   const d = e.data;
   if (d.grid) { setGrid(new Uint8Array(d.grid)); return; }
-  postMessage({ id: d.id, r: solveRoute(d.a, d.b, d.modes) });
+  postMessage({ id: d.id, r: solveRoute(d.a, d.b, d.modes, d.boost) });
 };

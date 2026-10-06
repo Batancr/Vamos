@@ -2,6 +2,8 @@
 
 ## Timeline
 - **5 Oct 2026:** brainstormed geography game ideas and picked Vamos. Built a playable prototype as a Claude artifact, then moved it into this repo layout (Fox project routine) with Node tests and a preview build.
+- **5–6 Oct 2026:** water, new modes and progression (ideas reviewed in the project's `vamos/ideas/swimming-modes-progression.md`; scuba was rejected). Swimming now uses the average Channel swimmer's pace. Added a lakes layer, seven new modes (hitchhiking, sailboat, kayak, paraglider, dog sled, giant tortoise, human cannonball), a Silly season rule set, earned stats, 13 badges, Fair mode and backup codes. Unbuilt mode ideas are kept in `vamos/ideas/travel-mode-backlog.md` in the project files.
+- **6 Oct 2026:** draw-then-assign. Routes are made of lines: a tap adds a one-segment line, and the ✏️ tool turns a freehand drag into one line with several bends. Tapping a line selects it, and the mode buttons then change that whole line.
 
 ## The gap (checked 5 Oct 2026)
 - The closest existing game is [Georoute](https://georoutegame.com/): you connect cities by car, boat, ship, plane or helicopter and score for the fastest or cheapest route. It works in city-to-city hops.
@@ -21,10 +23,15 @@
 - **A simplified travel model, not real routing.** Real road, rail and ferry routing worldwide needs paid or heavy services. A 0.25° terrain grid (about 28 km cells) keeps the site static and free, and the player and the best-route solver follow exactly the same rules.
 - **The best route uses day-averaged speeds.** The solver spreads rest over each hour, so for example walking counts as 5 km/h × 10/24. The player's own legs use real days with nights. On long trips the two match; on short hops a player can beat the solver, and the page says so.
 - **Straight-line legs on a plain lat/lon map.** This is simple to draw and score. Legs can't wrap across the Pacific (from 180° to −180°), and the solver doesn't wrap either, so the two stay consistent.
+- **Lines and legs.** A line is what the player drew in one go and has one mode; inside it are straight legs, which are what the rules score. A freehand stroke is simplified (Ramer–Douglas–Peucker, 6 px) so a wobbly finger doesn't make hundreds of legs. Switching a line to a rocket collapses it to one hop to the spaceport nearest its end. In draw mode one finger draws and two fingers pan and zoom.
 - **Same-mode legs form one stint.** Drawing a car route in five clicks costs one car hire and shares nights, so extra clicks aren't penalised.
 - **Grace zones.** There are 15 km at each end of a leg for docks and coasts. Land modes may also cross short stretches of water (3 km on foot, 25 km by car for bridges, 55 km by train for tunnels), and boats may cross 25 km of land (canals).
 - **Art:** a stick figure plus emoji for vehicles, and a cartoon relief map made from the elevation data. No image assets to license.
-- **No accounts and no server.** It's a static site. Nothing is stored yet, so there's no backup/restore yet (see open items).
+- **No accounts and no server.** It's a static site. Stats and badges live in localStorage (`vamos.progress`), and a base64 backup code moves them between devices. Restoring merges: the higher km per mode and every badge from both.
+- **Lakes.** The grid has a third surface value, 2 = lake, from Natural Earth's 1:50m lakes drawn at 16 sub-cells per degree. A cell is lake if at least 25% of it is lake and it isn't mostly land. Only big lakes show at this scale (Geneva and Loch Ness don't). Australia's usually-dry salt pans (Eyre, Frome, Gairdner, Torrens, Mackay, Disappointment, Barlee) are left as land. Land modes treat lakes like sea; water modes can use them.
+- **Stats without grinding.** Grading is against the best route *at your own stats*, so a maxed player who plans badly scores worse than a new player who plans well. Stats are small (+15% cap), only for human-powered modes, earned per km of that mode, and each trip counts once per rule set. Fair mode (base speed for everyone) is on by default for the daily trip.
+- **Paraglider par is cautious.** The solver only glides one cell at a time out of hilly cells, while players can draw long glides from a hill. Clever players can beat the par, which the A+ note already allows for.
+- **Hitchhiking luck is seeded.** The wait comes from the trip number and leg number, so everyone on the same daily trip gets the same luck. Practice trips use a random seed.
 
 ## Game numbers and where they come from
 These are game-balance choices unless a source is named. Confidence: H = high, M = medium, L = low or invented for fun.
@@ -39,7 +46,16 @@ These are game-balance choices unless a source is named. Confidence: H = high, M
 | Car | 80 km/h average, 12 h/day, slowed by rough terrain | Game choice | L |
 | Train | 120 km/h, runs 24 h (sleeper), slowed by mountains | Game choice | L |
 | Boat | 30 km/h (about 16 knots), 24 h | Game choice | L |
-| Swimming | 3 km/h, 8 h/day; 3 h/day above 50° latitude | Game choice, roughly a strong open-water swimmer | L |
+| Swimming | 2.4 km/h, 8 h/day; 3 h/day above 50° latitude | Average solo Channel crossing, 13 h 34 min (dover.uk.com statistics page), over the 33.2 km narrowest crossing. Hours per day are a game choice | M for the pace, L for the hours |
+| Lakes | Natural Earth 1:50m lakes; 2,142 lake cells | naturalearthdata.com via the nvkelso/natural-earth-vector GitHub repo | H for the source, L for the 25% threshold |
+| Hitchhiking | Car speed, 0–6 h wait per lift in 15 min steps | Game choice | L |
+| Sailboat | 10 km/h ± 8 km/h of wind (never below 4), 24 h | Game choice, same wind belts as the balloon | L |
+| Kayak | 6 km/h, 8 h/day, can carry 5 km over land | Game choice | L |
+| Paraglider | 25 km/h, 6 h/day, max 150 km a leg, launch 300 m above the cell average | The distance record is about 612 km (freedom-parapente.fr, 2021), so 25 km/h and 150 km are an ordinary pilot | L |
+| Dog sled | 12 km/h, 8 h/day, ice sheets or land beyond 60° | Game choice | L |
+| Giant tortoise | 0.3 km/h, 24 h/day | Game choice | L |
+| Human cannonball | 300 m a shot, 2 h to reload (0.15 km/h) | Game choice | L |
+| Stats | +1% per 333 km walking, 300 km running, 1,000 km cycling, 300 km skating, 150 km kayaking, 33 km swimming, 500 km paragliding; cap +15% | Game choice (swim 100 km ≈ +3%, walk 1,000 km ≈ +3%, as proposed) | L |
 | Balloon | 15 km/h ± 25 km/h of wind; east between 30° and 60° latitude, west elsewhere | Prevailing wind belts (westerlies and trade winds) | M for direction, L for speeds |
 | Balloon ceiling | Crashes over cells with peaks above 4,500 m | Game choice | L |
 | Rocket | 72 h launch prep + 1 h flight, spaceport to spaceport | Game choice | L |
@@ -54,10 +70,12 @@ Data sources and licences are in `data/raw/README.md`.
 ## Open items
 - [ ] Check the attribution wording for AWS Terrain Tiles and Natural Earth.
 - [ ] Spot-check spaceport and trip coordinates.
-- [ ] Lakes count as land (the Great Lakes, Lake Victoria). This needs a lakes layer.
-- [ ] Add streaks and best grades per trip in localStorage, with backup and restore.
+- [x] Lakes layer (6 Oct 2026).
+- [x] Progress in localStorage with backup and restore (6 Oct 2026).
+- [ ] Add streaks and best grades per trip.
+- [ ] One long practice trip can max a stat (e.g. 2,250 km of kayaking). Consider a per-trip limit if that feels too quick.
+- [ ] Badges don't unlock modes yet; the ideas doc suggested unlocking fun modes.
 - [ ] Add a minimum time per mode as a custom setting (Triathlon already uses 1 h).
-- [ ] Possibly add a scuba mode, so "the bends" can apply when someone dives and then flies a balloon or rocket.
 - [ ] Possibly let legs wrap across the Pacific.
 - [ ] Possibly add more trips; small towns make better puzzles than capitals.
 - [ ] Check that "Vamos" is free as a name and domain.

@@ -7,7 +7,7 @@ function setGrid(buf) {
   ELEV = buf.subarray(0, n);          // mean land elevation, 25 m units
   MAXE = buf.subarray(n, 2 * n);      // highest point in cell, 40 m units
   ROUGH = buf.subarray(2 * n, 3 * n); // elevation spread in cell, 5 m units
-  LAND = buf.subarray(3 * n, 4 * n);  // 1 = land
+  LAND = buf.subarray(3 * n, 4 * n);  // surface: 0 = sea, 1 = land, 2 = lake
 }
 function cellOf(lat, lon) {
   let r = Math.floor((90 - lat) * 4), c = Math.floor((lon + 180) * 4);
@@ -21,6 +21,9 @@ const elevM = i => ELEV[i] * 25;
 const maxM = i => MAXE[i] * 40;
 const roughM = i => ROUGH[i] * 5;
 const isLand = i => LAND[i] === 1;
+const isLake = i => LAND[i] === 2;
+// Somewhere a paraglider can launch: a peak at least 300 m above the cell's average ground.
+const isHill = i => LAND[i] === 1 && (MAXE[i] * 40 - ELEV[i] * 25) >= 300;
 function isIce(i, lat, lon) {
   return LAND[i] === 1 && (lat < -62 || (lat > 60 && lon > -74 && lon < -12 && ELEV[i] * 25 > 300));
 }
@@ -39,10 +42,17 @@ const MODES = {
   bike:    { name: 'Bicycle', icon: '🚲', color: '#1f8a8a', dash: [], speed: 20, hours: 8, terrain: 'land', climb: 700, human: true, setup: 0.25, gap: 3, noIce: true },
   skate:   { name: 'Skateboard', icon: '🛹', color: '#b5338a', dash: [2, 5], speed: 12, hours: 4, terrain: 'land', climb: 300, human: true, setup: 0, gap: 3, noIce: true, roughK: 150 },
   car:     { name: 'Car', icon: '🚗', color: '#c23b2e', dash: [], speed: 80, hours: 12, terrain: 'land', climb: 0, setup: 0.5, gap: 25, noIce: true, roughK: 400 },
+  hitch:   { name: 'Hitchhike', icon: '👍', color: '#9c6b2f', dash: [1, 4], speed: 80, hours: 12, terrain: 'land', climb: 0, setup: 3, gap: 25, noIce: true, roughK: 400 },
   train:   { name: 'Train', icon: '🚆', color: '#5b3fa8', dash: [10, 4], speed: 120, hours: 24, terrain: 'land', climb: 0, setup: 1, gap: 55, noIce: true, roughK: 200 },
   ferry:   { name: 'Boat', icon: '⛴️', color: '#1d5e9e', dash: [12, 5], speed: 30, hours: 24, terrain: 'water', climb: 0, setup: 2, gap: 25 },
-  swim:    { name: 'Swim', icon: '🏊', color: '#2aa6c9', dash: [3, 4], speed: 3, hours: 8, terrain: 'water', climb: 0, human: true, setup: 0, gap: 25 },
+  sail:    { name: 'Sailboat', icon: '⛵', color: '#4a6fb5', dash: [8, 3, 2, 3], speed: 10, hours: 24, terrain: 'water', climb: 0, setup: 2, gap: 25 },
+  kayak:   { name: 'Kayak', icon: '🛶', color: '#2f8f6b', dash: [6, 4], speed: 6, hours: 8, terrain: 'water', climb: 0, human: true, setup: 0.5, gap: 5 },
+  swim:    { name: 'Swim', icon: '🏊', color: '#2aa6c9', dash: [3, 4], speed: 2.4, hours: 8, terrain: 'water', climb: 0, human: true, setup: 0, gap: 25 },
+  glide:   { name: 'Paraglider', icon: '🪂', color: '#e07b1f', dash: [2, 3], speed: 25, hours: 6, terrain: 'glide', climb: 0, setup: 0.5, gap: 10, maxKm: 150 },
+  sled:    { name: 'Dog sled', icon: '🛷', color: '#6b7f99', dash: [], speed: 12, hours: 8, terrain: 'snow', climb: 0, setup: 1, gap: 3 },
   balloon: { name: 'Hot air balloon', icon: '🎈', color: '#e0457b', dash: [1, 6], speed: 15, hours: 24, terrain: 'air', climb: 0, setup: 3, gap: 0, silly: true },
+  tortoise:{ name: 'Giant tortoise', icon: '🐢', color: '#5f8a3a', dash: [1, 3], speed: 0.3, hours: 24, terrain: 'land', climb: 0, setup: 0, gap: 0.5, silly: true },
+  cannon:  { name: 'Human cannonball', icon: '💥', color: '#444', dash: [1, 8], speed: 0.15, hours: 12, terrain: 'land', climb: 0, setup: 1, gap: 0.3, silly: true },
   rocket:  { name: 'Rocket', icon: '🚀', color: '#222', dash: [14, 6], hours: 24, terrain: 'space', setup: 72, flight: 1, silly: true },
   moon:    { name: 'Rocket via the Moon', icon: '🌕', color: '#8a7a2e', dash: [14, 6], hours: 24, terrain: 'space', setup: 72, flight: 145, silly: true },
 };
@@ -66,19 +76,26 @@ function terrainProblem(m, i, lat, lon) {
     if (M.noIce && isIce(i, lat, lon)) return 'ice';
   } else if (M.terrain === 'water') {
     if (land) return 'land';
+  } else if (M.terrain === 'snow') {
+    if (!land) return 'water';
+    if (!isIce(i, lat, lon) && Math.abs(lat) < 60) return 'snow';
+  } else if (M.terrain === 'glide') {
+    if (!land) return 'water';
+    if (maxM(i) > 4500) return 'peak';
   } else if (M.terrain === 'air') {
     if (maxM(i) > 4500) return 'peak';
   }
   return null;
 }
-// eastFrac: share of the step heading east (-1..1), for balloon winds.
-function speedAt(m, i, lat, eastFrac) {
+// Prevailing winds: +1 blows east (westerlies, 30°–60°), −1 blows west (trade and polar easterlies).
+const windDir = lat => { const a = Math.abs(lat); return a >= 30 && a < 60 ? 1 : -1; };
+// eastFrac: share of the step heading east (-1..1), for winds.
+// boost: the player's earned speed-ups, e.g. { swim: 0.06 } for 6% faster swimming (see boostsFrom).
+function speedAt(m, i, lat, eastFrac, boost) {
   const M = MODES[m];
-  if (m === 'balloon') {
-    const a = Math.abs(lat), toEast = a >= 30 && a < 60 ? 1 : -1; // westerlies vs trade/polar easterlies
-    return Math.max(2, 15 + 25 * toEast * eastFrac);
-  }
-  let v = M.speed;
+  if (m === 'balloon') return Math.max(2, 15 + 25 * windDir(lat) * eastFrac);
+  if (m === 'sail') return Math.max(4, 10 + 8 * windDir(lat) * eastFrac); // tacking still gets you upwind, slowly
+  let v = M.speed * (1 + ((boost && boost[m]) || 0));
   if (M.roughK) v = v / (1 + roughM(i) / M.roughK);
   return v;
 }
@@ -94,7 +111,7 @@ function climbHours(m, dElev, i, km) {
 }
 
 // Best-route solver: Dijkstra over grid cells using day-averaged speeds.
-function solveRoute(startLL, endLL, allowed) {
+function solveRoute(startLL, endLL, allowed, boost) {
   const R = G.R, C = G.C, N = R * C;
   const s = cellOf(startLL[0], startLL[1]), t = cellOf(endLL[0], endLL[1]);
   const modes = allowed.filter(m => MODES[m].terrain !== 'space');
@@ -121,7 +138,8 @@ function solveRoute(startLL, endLL, allowed) {
   const avgK = modes.map(m => MODES[m].hours / 24);
   // A* heuristic: straight-line distance at the fastest day-averaged speed, or via the best spaceports.
   let vmax = 0;
-  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : MODES[m].speed * MODES[m].hours / 24);
+  const capB = 1 + STAT_CAP / 100;
+  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : MODES[m].speed * capB * MODES[m].hours / 24);
   const tl = [cellLat((t / C) | 0), cellLon(t % C)];
   const nearSite = (la, lo) => { let b = Infinity; for (const x of SITES) b = Math.min(b, hav(la, lo, x[1], x[2])); return b; };
   const spaceCost = space.length ? Math.min(...space.map(m => MODES[m].setup + MODES[m].flight)) : Infinity;
@@ -140,7 +158,7 @@ function solveRoute(startLL, endLL, allowed) {
     done[u] = 1;
     if (u === t) break;
     const ur = (u / C) | 0, uc = u - ur * C, ulat = cellLat(ur), du = dist[u];
-    const ns = 27.8, ew = 27.8 * Math.cos(ulat * Math.PI / 180);
+    const ns = 27.8, ew = 27.8 * Math.cos(ulat * Math.PI / 180), hillU = isHill(u);
     for (let k = 0; k < 8; k++) {
       const vr = ur + DR[k], vc = uc + DC[k];
       if (vr < 0 || vr >= R || vc < 0 || vc >= C) continue;
@@ -152,8 +170,9 @@ function solveRoute(startLL, endLL, allowed) {
       for (let q = 0; q < modes.length; q++) {
         const m = modes[q];
         if (terrainProblem(m, v, vlat, vlon)) continue;
+        if (m === 'glide' && !hillU) continue; // the solver only glides off hills, one cell at a time (a cautious par)
         const frac = m === 'swim' ? hoursPerDay(m, vlat) / 24 : avgK[q];
-        const h = (km / speedAt(m, v, vlat, east) + climbHours(m, dE, v, km)) / frac;
+        const h = (km / speedAt(m, v, vlat, east, boost) + climbHours(m, dE, v, km)) / frac;
         if (h < best) { best = h; bm = midx[q]; }
       }
       if (bm >= 0 && du + best < dist[v]) { dist[v] = du + best; prev[v] = u; pmode[v] = bm; push(dist[v] + heur(v), v); }
@@ -209,12 +228,13 @@ const TRIPS = [
 ];
 
 const RULES = {
-  classic:  { name: 'Classic', modes: ['walk', 'run', 'bike', 'skate', 'car', 'train', 'ferry', 'swim', 'balloon', 'rocket', 'moon'], note: 'Everything except planes. Find the fastest mix.' },
-  human:    { name: 'Human power', modes: ['walk', 'run', 'bike', 'skate', 'swim'], note: 'No engines. Oceans are your problem.' },
+  classic:  { name: 'Classic', modes: ['walk', 'run', 'bike', 'skate', 'car', 'hitch', 'train', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'balloon', 'tortoise', 'cannon', 'rocket', 'moon'], note: 'Everything except planes. Find the fastest mix.' },
+  human:    { name: 'Human power', modes: ['walk', 'run', 'bike', 'skate', 'kayak', 'swim', 'glide'], note: 'No engines. Oceans are your problem.' },
   tri:      { name: 'Triathlon', modes: ['run', 'bike', 'swim'], note: 'Run, bike and swim only, and each for at least 1 hour.', min: 1 },
-  nowheels: { name: 'No wheels', modes: ['walk', 'run', 'ferry', 'swim', 'balloon'], note: 'Feet, boats and balloons.' },
+  nowheels: { name: 'No wheels', modes: ['walk', 'run', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'balloon', 'tortoise'], note: 'Feet, boats, wings, dogs and balloons.' },
   balloon:  { name: 'Balloonatic', modes: ['walk', 'balloon'], note: 'A hot air balloon and your own two feet. Winds blow east between 30° and 60° latitude, west elsewhere.' },
   rocket:   { name: 'Rocket Man', modes: ['walk', 'run', 'rocket', 'moon'], note: 'Rockets only fly between spaceports. You walk the rest.' },
+  silly:    { name: 'Silly season', modes: ['walk', 'tortoise', 'cannon', 'swim', 'glide', 'balloon'], note: 'Only the daft ways to travel. Bring snacks.' },
 };
 
 
@@ -237,12 +257,14 @@ function nearestSite(la, lo) {
   return { site: b, km: bd };
 }
 const PROBLEM_TEXT = {
-  water: m => `You can't ${m === 'car' ? 'drive' : m === 'train' ? 'take a train' : m === 'bike' ? 'cycle' : m === 'skate' ? 'skate' : m === 'run' ? 'run' : 'walk'} across that much water. Switch to a boat or swim.`,
-  land: m => m === 'swim' ? 'That swim crosses dry land. Get out and walk.' : 'Boats need water. That leg crosses land.',
+  water: m => m === 'glide' ? 'Paragliders have to land on land. That leg ends up over open water.' :
+    `You can't ${{ car: 'drive', hitch: 'hitch a lift', train: 'take a train', bike: 'cycle', skate: 'skate', run: 'run', sled: 'sled', tortoise: 'ride a tortoise', cannon: 'fire yourself' }[m] || 'walk'} across that much water. Switch to a boat or swim.`,
+  land: m => m === 'swim' ? 'That swim crosses dry land. Get out and walk.' : m === 'kayak' ? 'Kayaks need water. Carry it a few km at most, then walk.' : 'Boats need water. That leg crosses land.',
+  snow: () => 'Dog sleds need snow: ice sheets, or land beyond 60° north or south.',
   ice: m => `${MODES[m].name}s don't work on ice sheets. Walk it.`,
-  peak: () => 'Your balloon crashed into the mountains. Go around peaks over 4,500 m.',
+  peak: m => `Your ${m === 'glide' ? 'paraglider' : 'balloon'} crashed into the mountains. Go around peaks over 4,500 m.`,
 };
-function evalLeg(mode, a, b) {
+function evalLeg(mode, a, b, boost) {
   const M = MODES[mode], leg = { mode, a, b, km: hav(a[0], a[1], b[0], b[1]), moving: 0, rest: 0, extra: 0, events: [], error: null };
   if (M.terrain === 'space') {
     const sa = nearestSite(a[0], a[1]), sb = nearestSite(b[0], b[1]);
@@ -255,7 +277,7 @@ function evalLeg(mode, a, b) {
     return leg;
   }
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])) / 0.05));
-  let along = 0, gapRun = 0, maxE = 0, cold = false, prevCell = cellOf(a[0], a[1]);
+  let along = 0, gapRun = 0, maxE = 0, cold = false, ice = false, lake = false, launch = false, prevCell = cellOf(a[0], a[1]);
   for (let k = 0; k < n; k++) {
     const t0 = k / n, t1 = (k + 1) / n;
     const la0 = a[0] + (b[0] - a[0]) * t0, lo0 = a[1] + (b[1] - a[1]) * t0;
@@ -270,17 +292,24 @@ function evalLeg(mode, a, b) {
       else if (!leg.error) leg.error = PROBLEM_TEXT[prob](mode);
     } else gapRun = 0;
     const east = (lo1 - lo0) * 111.32 * Math.cos(mla * Math.PI / 180) / km;
-    leg.moving += km / speedAt(mode, i, mla, east) + climbHours(mode, elevM(i) - elevM(prevCell), i, km);
+    leg.moving += km / speedAt(mode, i, mla, east, boost) + climbHours(mode, elevM(i) - elevM(prevCell), i, km);
     if (isLand(i)) maxE = Math.max(maxE, elevM(i));
     if (mode === 'swim' && Math.abs(mla) > 50) cold = true;
+    if (isIce(i, mla, mlo)) ice = true;
+    if (isLake(i)) lake = true;
+    if (along <= 15 && isHill(i)) launch = true;
     prevCell = i;
   }
-  leg.maxE = maxE; leg.cold = cold;
+  leg.maxE = maxE; leg.cold = cold; leg.ice = ice; leg.lake = lake;
+  if (mode === 'glide' && !leg.error) {
+    if (!launch) leg.error = 'Paragliders launch from hills. Start this leg somewhere hilly (300 m above the land around).';
+    else if (leg.km > M.maxKm) leg.error = `A paraglider flies about ${M.maxKm} km in a day. Land, then launch again from a hill.`;
+  }
   return leg;
 }
 // Consecutive legs with the same mode form one stint: one setup, shared rest days, one altitude stop.
 function restFor(moving, hpd) { return hpd >= 24 ? 0 : Math.max(0, Math.ceil(moving / hpd - 1e-9) - 1) * (24 - hpd); }
-function finalizeLegs(legs) {
+function finalizeLegs(legs, seed) {
   let cum = 0, acclimatised = false;
   legs.forEach((l, k) => {
     const M = MODES[l.mode], first = k === 0 || legs[k - 1].mode !== l.mode;
@@ -288,17 +317,31 @@ function finalizeLegs(legs) {
     if (first) { cum = 0; acclimatised = false; }
     const hpd = l.cold ? 3 : M.hours, before = cum; cum += l.moving;
     l.rest = restFor(cum, hpd) - restFor(before, hpd);
-    l.setup = first ? M.setup : 0;
+    l.setup = l.mode === 'hitch' ? luckWait(seed || 1, k) : first ? M.setup : 0; // every lift is a new wait
     if (l.rest > 0) l.events.push(`${fmtH(l.rest)} of sleep and rest (${hpd}h of ${M.name.toLowerCase()} a day)`);
     if (l.cold) l.events.push('Freezing water: only 3h of swimming a day');
     if (M.human && l.maxE >= 3000 && !acclimatised) { acclimatised = true; l.extra += 24; l.events.push(`Altitude sickness at about ${Math.round(l.maxE / 100) * 100} m: +24h to acclimatise`); }
-    if (l.mode === 'ferry') { const d = Math.floor(cum / 24) - Math.floor(before / 24); if (d > 0) { l.extra += 4 * d; l.events.push(`Seasick: +${4 * d}h lying down`); } }
+    if (l.mode === 'ferry' || l.mode === 'sail') { const d = Math.floor(cum / 24) - Math.floor(before / 24); if (d > 0) { l.extra += 4 * d; l.seasick = d; l.events.push(`Seasick: +${4 * d}h lying down`); } }
     if (l.mode === 'swim' && l.km > 34) l.events.push('Longer than swimming the English Channel');
-    if (l.mode === 'balloon') l.events.push('Riding the prevailing winds');
-    if (l.setup) l.events.push(`${fmtH(M.setup)} to ${{ bike: 'rent a bike', car: 'hire a car', train: 'catch the train', ferry: 'board the boat', balloon: 'inflate the balloon' }[l.mode]}`);
+    if (l.mode === 'balloon' || l.mode === 'sail') l.events.push('Riding the prevailing winds');
+    if (l.mode === 'tortoise') l.events.push('The tortoise never sleeps');
+    if (l.mode === 'cannon') l.events.push(`Fired from the cannon ${Math.max(1, Math.round(l.km / 0.3)).toLocaleString()} times`);
+    if (l.lake && (l.mode === 'swim' || l.mode === 'kayak')) l.events.push('Across a lake');
+    if (l.mode === 'hitch') l.events.push(l.setup ? `${fmtH(l.setup)} waiting for a lift` : 'Got a lift straight away');
+    else if (l.setup) l.events.push(`${fmtH(M.setup)} to ${SETUP_TEXT[l.mode] || 'get ready'}`);
     l.total = l.setup + l.moving + l.rest + l.extra;
   });
   return legs;
+}
+
+const SETUP_TEXT = { bike: 'rent a bike', car: 'hire a car', train: 'catch the train', ferry: 'board the boat', sail: 'rig the sails',
+  kayak: 'rent a kayak', glide: 'lay out the wing', sled: 'harness the dogs', balloon: 'inflate the balloon', cannon: 'load the cannon' };
+// Hitchhiking luck: a wait of 0 to 6 hours in 15-minute steps. Same trip and leg number, same wait, for everyone.
+function luckWait(seed, k) {
+  let a = (Math.imul(seed >>> 0, 2654435761) + Math.imul(k + 1, 40503)) >>> 0;
+  a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), a | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * 25) / 4;
 }
 
 function grade(ratio) {
@@ -311,4 +354,90 @@ function dailyTrip(nowMs) {
   return { idx: ((day % TRIPS.length) + TRIPS.length) % TRIPS.length, no: Math.max(1, day + 1) };
 }
 
-if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isIce, hav, MODES, MODE_KEYS, SITES, terrainProblem, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, grade, dailyTrip };
+// ---------- progress: earned speed-ups and badges ----------
+// Doing an activity makes you better at it: +1% speed per this many km in total, up to +15%.
+const STAT_KM = { walk: 333, run: 300, bike: 1000, skate: 300, kayak: 150, swim: 33, glide: 500 };
+const STAT_CAP = 15;
+function emptyProgress() { return { v: 1, km: {}, badges: {}, done: [] }; }
+function boostPct(m, km) { return STAT_KM[m] ? Math.min(STAT_CAP, Math.floor((km || 0) / STAT_KM[m])) : 0; }
+function boostsFrom(p) { const b = {}; for (const m in STAT_KM) { const x = boostPct(m, p.km[m]); if (x) b[m] = x / 100; } return b; }
+
+// ctx: { total (hours), grade, rules }
+const BADGES = [
+  { id: 'channel', icon: '🏊', name: 'Channel Crosser', how: 'Swim 34 km or more in one leg', test: (L) => L.some(l => l.mode === 'swim' && l.km >= 34) },
+  { id: 'lake', icon: '🛶', name: 'Lake Crosser', how: 'Swim or kayak across a lake', test: (L) => L.some(l => (l.mode === 'swim' || l.mode === 'kayak') && l.lake) },
+  { id: 'peak', icon: '🏔️', name: 'Peak Bagger', how: 'Walk or run over ground above 4,000 m', test: (L) => L.some(l => (l.mode === 'walk' || l.mode === 'run') && l.maxE >= 4000) },
+  { id: 'glide', icon: '🪂', name: 'Cloud Surfer', how: 'Paraglide 100 km in one leg', test: (L) => L.some(l => l.mode === 'glide' && l.km >= 100) },
+  { id: 'sled', icon: '🛷', name: 'Mush!', how: 'Cross an ice sheet by dog sled', test: (L) => L.some(l => l.mode === 'sled' && l.ice) },
+  { id: 'hitch', icon: '👍', name: 'Lucky Thumb', how: 'Get a lift with no wait', test: (L) => L.some(l => l.mode === 'hitch' && l.setup === 0) },
+  { id: 'seasick', icon: '🤢', name: 'Seasick Sailor', how: 'Be seasick for 5 days in one trip', test: (L) => L.reduce((s, l) => s + (l.seasick || 0), 0) >= 5 },
+  { id: 'tortoise', icon: '🐢', name: 'Slow and Steady', how: 'Ride a giant tortoise', test: (L) => L.some(l => l.mode === 'tortoise') },
+  { id: 'cannon', icon: '💥', name: 'Human Cannonball', how: 'Get fired from a cannon', test: (L) => L.some(l => l.mode === 'cannon') },
+  { id: 'moon', icon: '🌕', name: 'Moonwalker', how: 'Take the scenic route round the Moon', test: (L) => L.some(l => l.mode === 'moon') },
+  { id: 'slow', icon: '🐌', name: 'Slowest Ever', how: 'Finish a trip that takes over a year', test: (L, c) => c.total > 365 * 24 },
+  { id: 'nowheels', icon: '🦶', name: 'Wheel-free', how: 'Finish a No wheels trip', test: (L, c) => c.rules === 'nowheels' },
+  { id: 'aplus', icon: '🏆', name: 'Beat the Computer', how: 'Score an A+', test: (L, c) => c.grade === 'A+' },
+];
+// Adds a finished trip. km only count the first time a trip is finished under a rule set (key), so replaying
+// the same trip doesn't farm speed. Returns the new progress, badges just earned and stats that went up.
+function recordTrip(p, legs, ctx, key) {
+  const out = { v: 1, km: { ...p.km }, badges: { ...p.badges }, done: p.done.slice() }, gains = [], newBadges = [];
+  if (!out.done.includes(key)) {
+    out.done.push(key); if (out.done.length > 500) out.done.shift();
+    for (const l of legs) if (STAT_KM[l.mode] && !l.error) out.km[l.mode] = (out.km[l.mode] || 0) + l.km;
+    for (const m in STAT_KM) { const a = boostPct(m, p.km[m]), b = boostPct(m, out.km[m]); if (b > a) gains.push({ mode: m, from: a, to: b }); }
+  }
+  for (const B of BADGES) if (!out.badges[B.id] && B.test(legs, ctx)) { out.badges[B.id] = ctx.day || 1; newBadges.push(B); }
+  return { progress: out, gains, newBadges };
+}
+// Backup codes: base64 JSON, so progress can move between devices.
+function encodeProgress(p) { const j = JSON.stringify({ v: 1, km: p.km, badges: p.badges }); return typeof btoa === 'function' ? btoa(j) : Buffer.from(j).toString('base64'); }
+function decodeProgress(code) {
+  try {
+    const j = typeof atob === 'function' ? atob(code.trim()) : Buffer.from(code.trim(), 'base64').toString();
+    const o = JSON.parse(j), p = emptyProgress();
+    if (!o || typeof o.km !== 'object') return null;
+    for (const m in STAT_KM) { const v = o.km[m]; if (typeof v === 'number' && v > 0 && v < 1e7) p.km[m] = v; }
+    for (const B of BADGES) if (o.badges && o.badges[B.id]) p.badges[B.id] = o.badges[B.id];
+    return p;
+  } catch { return null; }
+}
+function mergeProgress(a, b) {
+  const p = { v: 1, km: { ...a.km }, badges: { ...b.badges, ...a.badges }, done: a.done.slice() };
+  for (const m in b.km) p.km[m] = Math.max(p.km[m] || 0, b.km[m]);
+  return p;
+}
+
+// ---------- drawing helpers ----------
+// Ramer–Douglas–Peucker: keeps the corners of a freehand stroke and drops points within tol of the line.
+// pts are [x, y] in screen pixels; the first and last points are always kept.
+function simplifyPath(pts, tol) {
+  if (pts.length < 3) return pts.slice();
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [i, j] = stack.pop(), [ax, ay] = pts[i], [bx, by] = pts[j], dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
+    let far = -1, fd = tol;
+    for (let k = i + 1; k < j; k++) {
+      const d = L ? Math.abs(dy * (pts[k][0] - ax) - dx * (pts[k][1] - ay)) / L : Math.hypot(pts[k][0] - ax, pts[k][1] - ay);
+      if (d > fd) { fd = d; far = k; }
+    }
+    if (far >= 0) { keep[far] = 1; stack.push([i, far], [far, j]); }
+  }
+  return pts.filter((p, k) => keep[k]);
+}
+// Groups legs into lines: legs whose end points share a line id were drawn together and share one mode.
+// pts[k + 1] is the end of legs[k]. Returns [{ id, mode, legs: [index…], km, total, error, events }].
+function linesOf(legs, pts) {
+  const out = [];
+  legs.forEach((l, k) => {
+    const id = pts[k + 1].line, last = out[out.length - 1];
+    const L = last && last.id === id ? last : (out.push({ id, mode: l.mode, legs: [], km: 0, total: 0, error: null, events: [] }), out[out.length - 1]);
+    L.legs.push(k); L.km += l.km; L.total += l.total || 0;
+    if (l.error && !L.error) L.error = l.error;
+    for (const e of l.events) if (!L.events.includes(e)) L.events.push(e);
+  });
+  return out;
+}
+
+if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf };

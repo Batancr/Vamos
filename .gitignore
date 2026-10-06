@@ -5,3 +5,4 @@ node_modules/
 preview/
 data/raw/tiles/
 data/raw/fine.npy
+data/raw/ne_50m_lakes.geojson
