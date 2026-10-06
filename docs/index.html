@@ -48,6 +48,9 @@ body { margin: 0; -webkit-text-size-adjust: 100%; background: var(--sea); color:
 .char { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border: 2px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font: 12.5px var(--body); color: var(--ink); text-align: center; }
 .char span { font-size: 22px; line-height: 1; }
 .char[aria-pressed="true"] { border-color: var(--ink); box-shadow: 3px 3px 0 var(--gold); }
+#layerMenu { width: 250px; }
+.toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+.toggles label { font-size: 13px; gap: 6px; }
 .look small { color: var(--muted); font-size: 11.5px; }
 .credit { position: absolute; right: 8px; bottom: 6px; max-width: min(360px, 60%); font-size: 10px; line-height: 1.3; text-align: right; background: rgba(251,248,241,.85); color: var(--ink); padding: 2px 6px; border-radius: 3px; }
 .credit a { color: var(--ink); }
@@ -121,6 +124,33 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
 .board i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 .board .t { font: 500 13px var(--mono); }
 .challenge .fair { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.acct { display: flex; flex-direction: column; gap: 6px; font-size: 14px; border-bottom: 1px dashed var(--line); padding-bottom: 10px; }
+.seg { display: inline-flex; }
+.seg .btn { border-radius: 0; margin-left: -2px; }
+.seg .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg .btn:last-child { border-radius: 0 6px 6px 0; }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--ticket); }
+.dot { font-style: normal; background: var(--stamp); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 11px; }
+.online { width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 32px); border: 3px solid var(--ink); border-radius: 12px; background: var(--ticket); color: var(--ink); padding: 14px; overflow-y: auto; }
+.online::backdrop { background: rgba(28,42,51,.45); }
+.ohead { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+.ohead .seg { flex-wrap: wrap; }
+#onlineBody { display: flex; flex-direction: column; gap: 8px; }
+.oform { display: flex; flex-direction: column; gap: 10px; }
+.oform label { display: flex; flex-direction: column; gap: 3px; font-weight: 700; font-size: 14px; }
+.oform small { font-weight: 400; color: var(--muted); }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; cursor: pointer; text-align: left; }
+.board .linkish { text-decoration: none; }
+.mlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mlist li { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 2px solid var(--line); border-radius: 8px; padding: 6px 8px; background: #fff; }
+.mlist li b { display: block; font-size: 14px; }
+.mlist li small { color: var(--muted); font-size: 12px; }
+.lobby { display: flex; flex-direction: column; gap: 8px; }
+.post { border: 2px solid var(--ink); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+.ranked { font-size: 14px; background: rgba(233,185,73,.3); border-radius: 6px; padding: 6px 8px; }
+.ranked small { color: var(--muted); }
+.pname { margin: 0; font-family: var(--display); font-weight: 400; font-size: 20px; }
+.badgeline { font-size: 22px; margin: 0; line-height: 1.5; }
 .foot { font-size: 11.5px; color: var(--muted); margin-top: auto; }
 .foot a { color: var(--muted); }
 @media (max-width: 760px) {
@@ -150,7 +180,20 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
       <label><input type="radio" name="layer" value="sat" checked> Satellite</label>
       <label><input type="radio" name="layer" value="streets"> Streets and roads</label>
       <label><input type="radio" name="layer" value="relief"> Relief map only</label>
-      <label style="margin-top:4px"><input type="checkbox" id="showStops" checked> Stops: ⚓ ports, 🪂 hills, 🎈 balloon sites</label>
+      <b style="margin-top:4px">Stops you can tap</b>
+      <div class="toggles" id="stopToggles">
+        <label><input type="checkbox" data-show="ports"> ⚓ Ports</label>
+        <label><input type="checkbox" data-show="hills"> 🪂 Hills</label>
+        <label><input type="checkbox" data-show="balloons"> 🎈 Balloons</label>
+      </div>
+      <b style="margin-top:4px">Shade terrain</b>
+      <div class="toggles" id="terrainToggles">
+        <label><input type="checkbox" data-show="desert"> 🏜️ Desert</label>
+        <label><input type="checkbox" data-show="grass"> 🌾 Grass</label>
+        <label><input type="checkbox" data-show="jungle"> 🌴 Jungle</label>
+        <label><input type="checkbox" data-show="ice"> ❄️ Ice/snow</label>
+      </div>
+      <small>Roads, highways, trails and forests are drawn on the Streets map. Terrain areas are rough.</small>
     </div>
     <div class="look" id="lookMenu" hidden>
       <b>Look around the ⊕ spot</b>
@@ -165,6 +208,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
   </div>
 
   <aside class="panel">
+    <div class="acct" id="account"></div>
     <div class="trip">
       <div class="place"><b id="fromName">…</b><small id="fromLL"></small></div>
       <div class="arrow" aria-hidden="true">→</div>
@@ -227,7 +271,15 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
     <p class="foot">Planes are banned. Terrain from <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (Mapzen; SRTM, GMTED, ETOPO1 and others). Borders from Natural Earth via world-atlas; lakes from Natural Earth. Streets from © OpenStreetMap contributors. Port locations from Natural Earth. Characters are original, inspired by well-known stories. Satellite imagery from EOxCloudless by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0. Speeds and rules are a simplified game model, not real travel advice.</p>
   </aside>
 </div>
+<dialog class="online" id="online" aria-label="Vamos online">
+  <div class="ohead">
+    <div class="seg" role="group" aria-label="Online sections"><button class="btn small" data-tab="rank">🏆 Rankings</button><button class="btn small" data-tab="lobby">⚔️ 1v1</button><button class="btn small" data-tab="me">👤 Account</button></div>
+    <button class="btn small" id="onlineClose" aria-label="Close">✕</button>
+  </div>
+  <div id="onlineBody"></div>
+</dialog>
 <script src="phys.js"></script>
 <script src="game.js"></script>
+<script src="online.js"></script>
 </body>
 </html>

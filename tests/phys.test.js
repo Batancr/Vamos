@@ -318,4 +318,32 @@ test('characters: the best route uses the character too (Caped Hero just flies)'
   } finally { V.setCharacter('none'); }
 });
 
+// ---------- biomes and terrain characters ----------
+test('biomes: Sahara is desert, Amazon jungle, Kansas grassland, Greenland ice, Paris none of them', () => {
+  const b = (la, lo) => V.biomeOf(V.cellOf(la, lo));
+  assert.deepStrictEqual([b(23, 10), b(-3, -60), b(38.5, -98.5), b(72, -40), b(48.85, 2.35)], ['desert', 'jungle', 'grass', 'ice', '']);
+});
+test('terrain characters: Rabbit walks 10 km/h on grass but 5 km/h in Paris; Fox runs 20 km/h in jungle', () => {
+  try {
+    V.setCharacter('rabbit');
+    assert.strictEqual(V.speedAt('walk', V.cellOf(38.5, -98.5), 38.5, 0), 10); // 5 × (1 + 1)
+    assert.strictEqual(V.speedAt('walk', V.cellOf(48.85, 2.35), 48.85, 0), 5);
+    V.setCharacter('fox'); assert.strictEqual(V.speedAt('run', V.cellOf(-3, -60), -3, 0), 20); // 10 × (1 + 0.5 + 0.5)
+    V.setCharacter('camel'); assert.strictEqual(V.speedAt('run', V.cellOf(23, 10), 23, 0), 20);
+    V.setCharacter('penguin');
+    assert.strictEqual(V.speedAt('walk', V.cellOf(72, -40), 72, 0), 15); // 5 × 3 on ice
+    assert.strictEqual(V.speedAt('sled', V.cellOf(72, -40), 72, 0), 18); // 12 × 1.5
+    assert.strictEqual(V.hoursPerDay('swim', 70), 8); // no cold-water limit
+  } finally { V.setCharacter('none'); }
+});
+test('terrain characters: a Rabbit\'s best walk across the Great Plains is about twice as fast', () => {
+  try {
+    const a = [39, -101], b = [39, -97];
+    const plain = V.solveRoute(a, b, ['walk']).hours;
+    V.setCharacter('rabbit');
+    const rabbit = V.solveRoute(a, b, ['walk']).hours;
+    assert.ok(rabbit < plain * 0.6, `rabbit ${rabbit} vs ${plain}`);
+  } finally { V.setCharacter('none'); }
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

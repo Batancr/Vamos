@@ -2,7 +2,7 @@
 // ---------- state ----------
 const $ = id => document.getElementById(id);
 const cv = $('map'), ctx = cv.getContext('2d');
-const S = { trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, char: 'none', showStops: true, markers: [], view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
+const S = { trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, char: 'none', show: { ports: true, hills: true, balloons: true, desert: false, grass: false, jungle: false, ice: false }, markers: [], view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
 let baseImg, W = 0, H = 0, DPR = 1;
 
 // ---------- progress (stats and badges), kept in this browser only ----------
@@ -11,7 +11,7 @@ function loadProgress() {
   try { const o = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (o && typeof o.km === 'object') return { ...emptyProgress(), ...o }; } catch {}
   return emptyProgress();
 }
-function saveProgress() { try { localStorage.setItem(PKEY, JSON.stringify(S.progress)); } catch {} }
+function saveProgress() { try { localStorage.setItem(PKEY, JSON.stringify(S.progress)); } catch {} if (window.Online) Online.progressChanged(); }
 // Fair mode: everyone travels at base speed. Otherwise your earned stats apply, to you and to the best route.
 const boost = () => S.fair ? {} : boostsFrom(S.progress);
 
@@ -24,7 +24,7 @@ function recompute() {
   if (S.sel != null && !S.lines.some(L => L.id === S.sel)) S.sel = null;
 }
 // Something changed the route: drop the old result and redraw.
-function routeChanged() { recompute(); S.best = null; $('result').hidden = true; renderModes(); renderLegs(); draw(); }
+function routeChanged() { recompute(); S.best = null; $('result').hidden = true; renderModes(); renderLegs(); draw(); if (window.Online) Online.tripChanged(); }
 const legPts = l => MODES[l.mode].terrain === 'space' ? arc(l.a, l.b) : [l.a, l.b];
 const tripTotal = () => S.legs.reduce((s, l) => s + l.total, 0);
 const atEnd = () => S.pts.length > 1 && S.pts[S.pts.length - 1].end;
@@ -121,13 +121,25 @@ function drawWorld(img, smooth) {
   const [dx, dy] = toXY(90 - sy / k, sx / k - 180), [dx2, dy2] = toXY(90 - ey / k, ex / k - 180);
   ctx.imageSmoothingEnabled = smooth; ctx.drawImage(img, sx, sy, ex - sx, ey - sy, dx, dy, dx2 - dx, dy2 - dy); ctx.imageSmoothingEnabled = true;
 }
+// Terrain shading: one pixel per grid cell, coloured by biome, only for the kinds switched on.
+const BIOME_RGBA = { desert: [240, 170, 40, 150], grass: [140, 210, 60, 140], jungle: [10, 100, 40, 160], ice: [150, 205, 255, 150] };
+function biomeMask() {
+  const on = Object.keys(BIOME_RGBA).filter(k => S.show[k]), key = 'biome:' + on.join();
+  if (!on.length) return null;
+  if (zoneCache[key]) return zoneCache[key];
+  const c = document.createElement('canvas'); c.width = G.C; c.height = G.R;
+  const g = c.getContext('2d'), im = g.createImageData(G.C, G.R), d = im.data;
+  for (let i = 0; i < G.R * G.C; i++) { const b = biomeOf(i); if (b && S.show[b]) d.set(BIOME_RGBA[b], i * 4); }
+  g.putImageData(im, 0, 0); return zoneCache[key] = c;
+}
 function drawZones() {
+  const bm = !S.playing && biomeMask(); if (bm) drawWorld(bm, S.view.ppd < 40);
   const kind = S.mode === 'sled' ? 'sled' : S.mode === 'glide' ? 'glide' : null;
   if (kind && !S.playing && allowedModes(S.rules).includes(S.mode)) drawWorld(zoneMask(kind), false);
 }
 function drawStops() {
   S.markers = [];
-  if (!S.showStops || S.playing) return;
+  if (S.playing) return;
   const allowed = allowedModes(S.rules), v = S.view, placed = [];
   const put = (ll, icon, name) => {
     const [x, y] = toXY(...ll);
@@ -136,12 +148,12 @@ function drawStops() {
     ctx.fillStyle = 'rgba(251,248,241,.92)'; ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fill(); ctx.strokeStyle = '#1c2a33'; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.font = '14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#000'; ctx.fillText(icon, x, y + 1); ctx.textBaseline = 'alphabetic';
   };
-  if (allowed.includes('balloon')) for (const b of PLACES.balloons) put([b[1], b[2]], '🎈', `${b[0]} (balloon site)`);
-  if (['ferry', 'sail', 'kayak'].some(m => allowed.includes(m))) {
+  if (S.show.balloons && allowed.includes('balloon')) for (const b of PLACES.balloons) put([b[1], b[2]], '🎈', `${b[0]} (balloon site)`);
+  if (S.show.ports && ['ferry', 'sail', 'kayak'].some(m => allowed.includes(m))) {
     const rank = v.ppd < 8 ? 4 : v.ppd < 20 ? 6 : 10; // only big ports when zoomed out
     for (const p of PLACES.ports) if (p[3] <= rank) put([p[1], p[2]], '⚓', `${p[0]} (port)`);
   }
-  if (allowed.includes('glide') && v.ppd >= 12) {
+  if (S.show.hills && allowed.includes('glide') && v.ppd >= 12) {
     // the best launch hill in each block of cells, with blocks sized so markers sit about 70 px apart
     const B = Math.max(1, Math.ceil(70 / (v.ppd * 0.25))), [la0, lo0] = toLL(0, 0), [la1, lo1] = toLL(W, H);
     const r0 = Math.max(0, Math.floor((90 - la0) * 4 / B) * B), r1 = Math.min(G.R - 1, Math.floor((90 - la1) * 4));
@@ -359,7 +371,7 @@ function setTrip(idx, no) {
 }
 // trip: { from, a: [lat, lon], to, b, idx? }. no: daily trip number, or 0 for practice, custom and challenge trips.
 function startTrip(trip, no, challenge) {
-  S.trip = trip; S.challenge = challenge || null; S.finished = false; S.picking = null;
+  S.trip = trip; S.challenge = challenge || null; S.match = null; S.finished = false; S.picking = null;
   S.tripNo = no; S.seed = challenge ? challenge.s : no || 1 + Math.floor(Math.random() * 1e6);
   S.fair = !!no || !!challenge; $('fair').checked = S.fair; $('fair').disabled = !!challenge; // Fair mode: on for the daily trip, always on in challenges
   if (!challenge && location.hash.startsWith('#c=')) history.replaceState(null, '', location.pathname + location.search);
@@ -368,6 +380,7 @@ function startTrip(trip, no, challenge) {
   $('tripNo').textContent = challenge ? '⚔️ Challenge' : no ? `Trip #${no}` : 'Practice trip';
   $('names').hidden = true; $('result').hidden = true; $('result').innerHTML = '';
   recompute(); renderLegs(); fitTrip();
+  if (window.Online) Online.tripChanged();
 }
 function renderTripHead() {
   $('fromName').textContent = S.trip.from; $('toName').textContent = S.trip.to;
@@ -439,6 +452,7 @@ function toast(msg, ms = 1800) { const t = $('toast'); t.textContent = msg; t.hi
 async function go() {
   if (!atEnd()) return;
   S.playing = true; renderLegs();
+  if (window.Online) Online.beforeGo();
   const rules = RULES[S.rules];
   const bestP = solveAsync(S.trip.a, S.trip.b, allowedModes(S.rules), boost());
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -500,6 +514,7 @@ function showResult(best) {
     ${note ? `<p class="hint">${note}</p>` : ''}
     <p class="hint">Graded against the best route at ${S.fair ? 'base speeds (Fair mode)' : 'your stats'}.</p>
     ${earned ? `<ul class="events earned">${earned}</ul>` : ''}
+    <div id="onlineResult"></div>
     <div class="label">Best route (dotted on the map)</div><p class="hint">${bestLine}</p>
     <div class="label">Share</div><pre class="share" id="shareText">${esc(share)}</pre>
     <div class="label">Challenge friends</div>
@@ -512,6 +527,7 @@ function showResult(best) {
   const mine = !dq && S.fair ? { n: myName(), h: you, g, p: encodeRoute(S.pts), c: S.char } : null;
   if (S.challenge && mine) { S.challenge.res = mergeResults(S.challenge.res, [mine]); saveBoard(S.challenge); }
   S.finished = true; renderChallenge(); draw();
+  if (window.Online) Online.finished(you, par, dq);
   $('myName').oninput = e => { try { localStorage.setItem('vamos.name', e.target.value.trim()); } catch {} if (mine && S.challenge) { mine.n = myName(); saveBoard(S.challenge); renderChallenge(); } };
   $('sendCh').onclick = () => {
     const name = myName(), c = S.challenge || { v: 1, id: Math.random().toString(36).slice(2, 10).padEnd(6, '0'), f: [S.trip.from, ...S.trip.a], t: [S.trip.to, ...S.trip.b], r: S.rules, s: S.seed, res: [] };
@@ -590,7 +606,7 @@ function renderTraveller() {
   }).join('');
   $('badges').innerHTML = BADGES.map(B => `<li class="${p.badges[B.id] ? 'got' : ''}" title="${B.how}"><span>${B.icon}</span><span><b>${B.name}</b><small>${B.how}</small></span></li>`).join('');
 }
-function changedStats() { renderModes(); recompute(); S.best = null; $('result').hidden = true; renderLegs(); renderTraveller(); draw(); }
+function changedStats() { renderModes(); recompute(); S.best = null; $('result').hidden = true; renderLegs(); renderTraveller(); draw(); if (window.Online) Online.tripChanged(); }
 $('fair').onchange = e => { S.fair = e.target.checked; changedStats(); };
 $('backup').onclick = () => { $('code').value = encodeProgress(S.progress); $('code').select(); $('codeMsg').textContent = 'Copy this code and paste it into Vamos on another device.'; };
 $('restore').onclick = () => {
@@ -664,7 +680,10 @@ $('layerMenu').querySelectorAll('input[name=layer]').forEach(r => r.onchange = (
   if (layer !== 'relief' && S.view.ppd < TILES_FROM) toast(`Zoom in to see ${LAYERS[layer].name.toLowerCase()}`);
   draw();
 });
-$('showStops').onchange = e => { S.showStops = e.target.checked; draw(); };
+$('layerMenu').querySelectorAll('input[data-show]').forEach(b => b.onchange = () => {
+  S.show[b.dataset.show] = b.checked; try { localStorage.setItem('vamos.show', JSON.stringify(S.show)); } catch {}
+  draw();
+});
 // Look around: opens Google Maps at the middle of the map (Maps URLs need no API key).
 $('look').onclick = () => {
   const open = $('lookMenu').hidden; $('lookMenu').hidden = !open; $('layerMenu').hidden = true; $('look').setAttribute('aria-expanded', open);
@@ -712,6 +731,8 @@ async function loadAssets() {
   catch (err) { $('hint').textContent = 'The map data did not load. Check your connection and reload the page.'; return; }
   $('rulesNote').textContent = RULES[S.rules].note;
   const lr = $('layerMenu').querySelector(`input[value="${layer}"]`); if (lr) lr.checked = true;
+  try { const sh = JSON.parse(localStorage.getItem('vamos.show') || '{}'); for (const k in S.show) if (typeof sh[k] === 'boolean') S.show[k] = sh[k]; } catch {}
+  $('layerMenu').querySelectorAll('input[data-show]').forEach(b => b.checked = S.show[b.dataset.show]);
   S.progress = loadProgress();
   try { S.char = CHARS[localStorage.getItem('vamos.char')] ? localStorage.getItem('vamos.char') : 'none'; } catch {}
   setCharacter(S.char); renderChars();

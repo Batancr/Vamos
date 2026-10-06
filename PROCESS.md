@@ -6,6 +6,7 @@
 - **6 Oct 2026:** draw-then-assign. Routes are made of lines: a tap adds a one-segment line, and the ✏️ tool turns a freehand drag into one line with several bends. Tapping a line selects it, and the mode buttons then change that whole line.
 - **6 Oct 2026:** satellite view, Look around links, custom trips and friend challenges with a leaderboard.
 - **6 Oct 2026:** streets layer and deeper zoom, stop points (ports, paragliding hills, balloon sites) with sled and hill zones, auto-stop for legs, and ten characters.
+- **6 Oct 2026:** biome layer (desert, grassland, jungle, ice and snow) with terrain characters (Rabbit, Camel, Monkey, Penguin; Fox, Mountaineer and Relic Hunter got terrain strengths), on/off switches for each stop kind and terrain shading, and online play on Supabase: accounts, ranked daily trips and a 1v1 lobby.
 
 ## The gap (checked 5 Oct 2026)
 - The closest existing game is [Georoute](https://georoutegame.com/): you connect cities by car, boat, ship, plane or helicopter and score for the fastest or cheapest route. It works in city-to-city hops.
@@ -42,6 +43,11 @@
 - **Stats without grinding.** Grading is against the best route *at your own stats*, so a maxed player who plans badly scores worse than a new player who plans well. Stats are small (+15% cap), only for human-powered modes, earned per km of that mode, and each trip counts once per rule set. Fair mode (base speed for everyone) is on by default for the daily trip.
 - **Paraglider par is cautious.** The solver only glides one cell at a time out of hilly cells, while players can draw long glides from a hill. Clever players can beat the par, which the A+ note already allows for.
 - **Hitchhiking luck is seeded.** The wait comes from the trip number and leg number, so everyone on the same daily trip gets the same luck. Practice trips use a random seed.
+
+- **Biomes are rough on purpose.** Natural Earth has desert and plain regions but no jungle or land-cover class, so `tools/build_biome.py` uses Natural Earth regions plus hand-typed boxes (about a degree accurate) for rainforests, the Arabian and Australian interiors and two steppes, with wobbly edges so they don't look like rectangles. Ice and snow is the dog-sled rule plus northern tundra. A real land-cover map (for example ESA WorldCover or MODIS) would be better but is far bigger; maybe later.
+- **Online play: Supabase (chosen by Alexander, 6 Oct 2026).** A static site can't hold accounts, so this is the one server piece. Reads are public; writes are limited by row-level security, and 1v1 updates go through database functions that check whose turn it is. Routes stay hidden until a match is over (and always for ranked), so nobody can copy them. The rules were tested on a local Postgres 16 with a stand-in for Supabase's auth schema, and the browser side with a fake Supabase client; not yet against a real Supabase project.
+- **Ranked = the daily trip, Classic rules, Fair mode, first finish only.** One shared puzzle a day keeps it fair. Finishing it casually first (and seeing the best route) makes the ranked try casual. Genie, Thunder God and Caped Hero fly straight there, so they're casual only.
+- **The 1v1 lobby is turn-based, not live.** The host posts the trip on their map and plays first; whoever accepts plays it later and sees who won. The lobby refreshes every 15 seconds while open and the game checks for results every minute. Live races would need realtime channels; possible later.
 
 ## Game numbers and where they come from
 These are game-balance choices unless a source is named. Confidence: H = high, M = medium, L = low or invented for fun.
@@ -89,7 +95,11 @@ Data sources and licences are in `data/raw/README.md`.
 - [ ] A finer land/water mask (e.g. 1/16°) would make auto-stop land closer to the real coast.
 - [ ] Spot-check balloon site coordinates.
 - [ ] Decide character limits or unlocks.
-- [ ] Live multiplayer races would need a backend; challenge links are the static version.
+- [ ] Live multiplayer races (realtime) on top of the turn-based 1v1 lobby.
+- [ ] Re-check ranked and 1v1 times on the server (Supabase Edge Function running `phys.js`); today the browser works them out.
+- [ ] Test online play against the real Supabase project once it exists.
+- [ ] Username filter is a short word list; consider a proper one and a report button.
+- [ ] Biomes: replace hand-typed boxes with a real land-cover map.
 - [ ] Very long freehand routes make long challenge links; consider compressing them if chat apps cut them off.
 - [ ] Add a minimum time per mode as a custom setting (Triathlon already uses 1 h).
 - [ ] Possibly let legs wrap across the Pacific.

@@ -6,11 +6,12 @@ Live site (once GitHub Pages is on): https://batancr.github.io/Vamos/
 
 ## How it plays
 - Draw your route as lines: tap to add stops, or press ✏️ and drag to draw freehand. Tap any line (on the map or in the list) to change how you travel it.
-- Zoom in (down to about 9 m per pixel) and the map switches to satellite imagery; 🛰️ swaps it for streets and roads (OpenStreetMap) or the plain relief map, and turns stop points on or off.
+- Zoom in (down to about 9 m per pixel) and the map switches to satellite imagery; 🛰️ swaps it for streets and roads (OpenStreetMap) or the plain relief map, and has on/off switches for each kind of stop and for terrain shading (desert, grassland, jungle, ice and snow).
 - **Stops:** ⚓ ports, 🪂 paragliding hills and 🎈 balloon sites are tap targets. Picking dog sled or paraglider shades where it can go.
 - **Auto-stop:** aim a leg too far and it stops at the limit, for example a boat stops at the coast and a car stops at the water's edge, so you can switch mode and carry on.
-- **Characters:** Traveller, Fox, Mountaineer, Mermaid, Genie, Thunder God, Caped Hero, Star Knight, Relic Hunter and Web Slinger, each with a power. The best route uses your character too. All free for now. 🔭 opens Google Street View or Google's satellite map at the middle of the map.
+- **Characters:** Traveller, Fox, Rabbit, Camel, Monkey, Penguin, Mountaineer, Mermaid, Genie, Thunder God, Caped Hero, Star Knight, Relic Hunter and Web Slinger, each with a power. Some are faster on certain terrain: Rabbit on grassland, Camel in deserts, Monkey and Fox in jungle, Penguin on ice and snow. The best route uses your character too. All free for now. 🔭 opens Google Street View or Google's satellite map at the middle of the map.
 - **Challenge friends:** after a trip, send a link. Friends play the same trip in Fair mode and send theirs back, and everyone who plays lands on one leaderboard, with their routes shown once you finish. **Custom** lets you tap any start and finish and name them.
+- **Online (once switched on):** make an account to keep stats and badges, play the daily trip **Ranked** for up to 1,000 points (1,000 × best route ÷ your time, first finish only), and post or accept **1v1** games in the lobby or challenge a player by username. Setup steps are in `supabase/README.md`.
 - There's a new trip every day ("Trip #N"), plus random practice trips.
 - Rule sets: Classic, Human power, Triathlon, No wheels, Balloonatic, Rocket Man, Silly season.
 - Real terrain matters. Hills slow walking and cycling, mountains slow cars and trains, balloons crash into peaks above 4,500 m, boats need water and cars need land.
@@ -36,8 +37,10 @@ node tests/phys.test.js
 - `docs/`: the whole website, served by GitHub Pages
   - `phys.js`: game rules and the best-route solver. Pure functions, tested in Node.
   - `game.js`: map drawing, input, playback and results
+  - `online.js`: accounts, ranked play and the 1v1 lobby (Supabase)
   - `worker.js`: runs the solver off the main thread
   - `data/`: terrain grid, basemap image and country borders (built by `tools/`)
+- `supabase/`: database setup (`setup.sql`) and how to switch online play on
 - `tools/`: data builders and the single-file preview builder
 - `tests/`: Node tests
 - `data/raw/`: notes on the source data (the downloaded tiles themselves are git-ignored)

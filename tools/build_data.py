@@ -4,7 +4,7 @@ Run from the repo root:  python3 tools/build_data.py
 Needs: numpy and pillow (python3 -m pip install numpy pillow), internet access.
 
 Outputs
-  docs/data/grid.bin      gzip of four 720x1440 byte layers (0.25 degree cells, rows 90N->90S, cols 180W->180E):
+  docs/data/grid.bin      gzip of four 720x1440 byte layers (tools/build_biome.py adds a fifth, biomes; run it after this) (0.25 degree cells, rows 90N->90S, cols 180W->180E):
                           mean land elevation (25 m units, 0 at sea), highest point (40 m units),
                           elevation spread / roughness (5 m units), surface (0 = sea, 1 = land, 2 = lake)
   docs/data/basemap.webp  2880x1440 cartoon relief map, same projection (plain lat/lon)

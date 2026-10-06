@@ -11,6 +11,7 @@
 
 | Ports | Natural Earth 1:10m ports (`ne_10m_ports.geojson`) from https://github.com/nvkelso/natural-earth-vector | Public domain (Natural Earth). **To verify.** | `docs/data/places.json` (built by `tools/build_places.py`) |
 | Balloon sites | Typed in by hand in `tools/build_places.py` | — (coordinates approximate, recalled) | `docs/data/places.json` |
+| Biomes (desert, grassland, jungle, ice) | Natural Earth 1:10m geography region polygons (`ne_10m_geography_regions_polys.geojson`) from https://github.com/nvkelso/natural-earth-vector, plus hand-typed boxes in `tools/build_biome.py` | Public domain (Natural Earth). **To verify.** Boxes are approximate. | The fifth layer of `docs/data/grid.bin` |
 | Streets (loaded live) | OpenStreetMap standard tiles `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | © OpenStreetMap contributors, ODbL; tile usage policy applies | Streets layer |
 
 Lakes skipped on purpose (`DRY` in `tools/build_data.py`): Australian salt pans that are dry most of the time (Lake Eyre North and South, Frome, Gairdner, Torrens, Mackay, Disappointment, Barlee).

@@ -1,13 +1,14 @@
 // Vamos game rules. Pure functions only (no DOM), so they run in the page, the worker and Node tests.
 // Grid: 0.25° cells, 720 rows (90N→90S) × 1440 cols (180W→180E).
 const G = { R: 720, C: 1440, step: 0.25 };
-let ELEV, MAXE, ROUGH, LAND;
+let ELEV, MAXE, ROUGH, LAND, BIOME;
 function setGrid(buf) {
   const n = G.R * G.C;
   ELEV = buf.subarray(0, n);          // mean land elevation, 25 m units
   MAXE = buf.subarray(n, 2 * n);      // highest point in cell, 40 m units
   ROUGH = buf.subarray(2 * n, 3 * n); // elevation spread in cell, 5 m units
   LAND = buf.subarray(3 * n, 4 * n);  // surface: 0 = sea, 1 = land, 2 = lake
+  BIOME = buf.length >= 5 * n ? buf.subarray(4 * n, 5 * n) : null; // see BIOMES (tools/build_biome.py)
 }
 function cellOf(lat, lon) {
   let r = Math.floor((90 - lat) * 4), c = Math.floor((lon + 180) * 4);
@@ -27,6 +28,10 @@ const isHill = i => LAND[i] === 1 && (MAXE[i] * 40 - ELEV[i] * 25) >= 300;
 function isIce(i, lat, lon) {
   return LAND[i] === 1 && (lat < -62 || (lat > 60 && lon > -74 && lon < -12 && ELEV[i] * 25 > 300));
 }
+// Rough biomes from tools/build_biome.py. Index = the byte stored in the grid's fifth layer.
+const BIOMES = [null, { key: 'desert', name: 'Desert', icon: '🏜️' }, { key: 'grass', name: 'Grassland', icon: '🌾' },
+  { key: 'jungle', name: 'Jungle', icon: '🌴' }, { key: 'ice', name: 'Ice and snow', icon: '❄️' }];
+const biomeOf = i => (BIOME && BIOMES[BIOME[i]] || {}).key || '';
 function hav(lat1, lon1, lat2, lon2) {
   const d = Math.PI / 180, a = Math.sin((lat2 - lat1) * d / 2) ** 2 +
     Math.cos(lat1 * d) * Math.cos(lat2 * d) * Math.sin((lon2 - lon1) * d / 2) ** 2;
@@ -66,20 +71,27 @@ const MODE_KEYS = Object.keys(MODES);
 // boost: extra speed per mode (0.5 = 50% faster), on top of earned stats. modes: extra ways to travel.
 const CHARS = {
   none:     { name: 'Traveller', icon: '🧍', power: 'Plain old you.' },
-  fox:      { name: 'Fox', icon: '🦊', power: 'Runs 15 km/h and walks 6 km/h.', boost: { run: 0.5, walk: 0.2 } },
-  climber:  { name: 'Mountaineer', icon: '🧗', power: 'Never gets altitude sickness and climbs twice as fast on foot.', noAltitude: true, climbMul: 2 },
+  fox:      { name: 'Fox', icon: '🦊', power: 'Runs 15 km/h and walks 6 km/h, and even faster in jungle (20 and 8.5 km/h).', boost: { run: 0.5, walk: 0.2 }, terrain: { jungle: { run: 0.5, walk: 0.5 } } },
+  rabbit:   { name: 'Rabbit', icon: '🐇', power: 'Bounds over grassland: walks and runs twice as fast on prairie, steppe, pampas and savanna.', terrain: { grass: { walk: 1, run: 1 } } },
+  camel:    { name: 'Camel', icon: '🐪', power: 'Made for sand: walks and runs twice as fast in deserts.', terrain: { desert: { walk: 1, run: 1 } } },
+  monkey:   { name: 'Monkey', icon: '🐒', power: 'Swings through the canopy: walks and runs 2.5 times as fast in jungle, and climbs twice as fast on foot.', terrain: { jungle: { walk: 1.5, run: 1.5 } }, climbMul: 2 },
+  penguin:  { name: 'Penguin', icon: '🐧', power: 'Belly-slides at 3 times walking speed on ice and snow, sleds 50% faster, and swims 8 km/h in cold water.', terrain: { ice: { walk: 2, sled: 0.5 } }, boost: { swim: 8 / 2.4 - 1 }, noCold: true },
+  climber:  { name: 'Mountaineer', icon: '🧗', power: 'Never gets altitude sickness, climbs twice as fast on foot, and walks 50% faster on ice and snow.', noAltitude: true, climbMul: 2, terrain: { ice: { walk: 0.5 } } },
   mermaid:  { name: 'Mermaid', icon: '🧜', power: 'Swims 20 km/h, 24 hours a day, in any water temperature.', boost: { swim: 20 / 2.4 - 1 }, noCold: true, swimHours: 24 },
   genie:    { name: 'Genie', icon: '🧞', power: 'Rides a magic carpet: 60 km/h, day and night, over anything.', modes: ['carpet'] },
   thunder:  { name: 'Thunder God', icon: '⚡', power: 'Hammer flight: 250 km/h for 12 hours a day, over anything.', modes: ['hammer'] },
   caped:    { name: 'Caped Hero', icon: '🦸', power: 'Superflight: 1,000 km/h, nonstop, up to the edge of space.', modes: ['fly'] },
   knight:   { name: 'Star Knight', icon: '🧙', power: 'Never waits: no setup or hitchhiking delays, and runs twice as fast.', noSetup: true, boost: { run: 1 } },
-  relic:    { name: 'Relic Hunter', icon: '🤠', power: 'Whip-swings across up to 10 km of water on land modes, and never gets seasick.', gapBonus: 10, noSeasick: true },
+  relic:    { name: 'Relic Hunter', icon: '🤠', power: 'Whip-swings across up to 10 km of water on land modes, never gets seasick, and is 30% faster on foot in deserts and jungle.', gapBonus: 10, noSeasick: true, terrain: { desert: { walk: 0.3, run: 0.3 }, jungle: { walk: 0.3, run: 0.3 } } },
   web:      { name: 'Web Slinger', icon: '🕷️', power: 'Web swing: 40 km/h, and mountains don\'t slow it.', modes: ['web'] },
 };
 let CH = CHARS.none;
 function setCharacter(id) { CH = CHARS[id] || CHARS.none; }
 // Speed-ups from earned stats and from the character, added together.
 function totalBoost(boost, m) { return ((boost && boost[m]) || 0) + ((CH.boost && CH.boost[m]) || 0); }
+// The character's extra speed for mode m in cell i's biome, and the most it can be anywhere (for the solver).
+const terrainBoost = (m, i) => { const t = CH.terrain && CH.terrain[biomeOf(i)]; return (t && t[m]) || 0; };
+const maxTerrainBoost = m => Math.max(0, ...Object.values(CH.terrain || {}).map(t => t[m] || 0));
 // The modes a player may use: the rule set's plus the character's own.
 function allowedModes(rulesKey) { return [...RULES[rulesKey].modes, ...(CH.modes || []).filter(m => !RULES[rulesKey].modes.includes(m))]; }
 
@@ -103,7 +115,7 @@ function terrainProblem(m, i, lat, lon) {
     if (land) return 'land';
   } else if (M.terrain === 'snow') {
     if (!land) return 'water';
-    if (!isIce(i, lat, lon) && Math.abs(lat) < 60) return 'snow';
+    if (!isIce(i, lat, lon) && Math.abs(lat) < 60 && biomeOf(i) !== 'ice') return 'snow';
   } else if (M.terrain === 'glide') {
     if (!land) return 'water';
     if (maxM(i) > 4500) return 'peak';
@@ -122,7 +134,7 @@ function speedAt(m, i, lat, eastFrac, boost) {
   const M = MODES[m];
   if (m === 'balloon') return Math.max(2, 15 + 25 * windDir(lat) * eastFrac);
   if (m === 'sail') return Math.max(4, 10 + 8 * windDir(lat) * eastFrac); // tacking still gets you upwind, slowly
-  let v = M.speed * (1 + totalBoost(boost, m));
+  let v = M.speed * (1 + totalBoost(boost, m) + terrainBoost(m, i));
   if (M.roughK) v = v / (1 + roughM(i) / M.roughK);
   return v;
 }
@@ -167,7 +179,7 @@ function solveRoute(startLL, endLL, allowed, boost) {
   // A* heuristic: straight-line distance at the fastest day-averaged speed, or via the best spaceports.
   let vmax = 0;
   const capB = 1 + STAT_CAP / 100;
-  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : MODES[m].speed * (capB + totalBoost(null, m)) * hoursPerDay(m, 0) / 24);
+  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : MODES[m].speed * (capB + totalBoost(null, m) + maxTerrainBoost(m)) * hoursPerDay(m, 0) / 24);
   const tl = [cellLat((t / C) | 0), cellLon(t % C)];
   const nearSite = (la, lo) => { let b = Infinity; for (const x of SITES) b = Math.min(b, hav(la, lo, x[1], x[2])); return b; };
   const spaceCost = space.length ? Math.min(...space.map(m => MODES[m].setup + MODES[m].flight)) : Infinity;
@@ -549,4 +561,4 @@ function decodeChallenge(code) {
   } catch { return null; }
 }
 
-if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf, CHARS, setCharacter, totalBoost, allowedModes, clipLeg, gapOf, encodeRoute, decodeRoute, mergeResults, encodeChallenge, decodeChallenge };
+if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, BIOMES, biomeOf, terrainBoost, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf, CHARS, setCharacter, totalBoost, allowedModes, clipLeg, gapOf, encodeRoute, decodeRoute, mergeResults, encodeChallenge, decodeChallenge };
