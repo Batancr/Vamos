@@ -440,4 +440,51 @@ function linesOf(legs, pts) {
   return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf };
+// ---------- friend challenges ----------
+// A challenge is a trip plus everyone's results, carried in the link itself (#c=…), so it needs no server.
+// Links come from anyone, so decoding checks every field and drops anything odd.
+const b64e = t => typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(t))) : Buffer.from(t, 'utf8').toString('base64');
+const b64d = t => typeof atob === 'function' ? decodeURIComponent(escape(atob(t))) : Buffer.from(t, 'base64').toString('utf8');
+const cleanName = (x, d) => typeof x === 'string' && x.trim() ? x.trim().replace(/[\u0000-\u001f]/g, '').slice(0, 40) : d;
+const num = (x, lo, hi) => typeof x === 'number' && isFinite(x) && x >= lo && x <= hi;
+// Route: "lat,lon,mode,line;…" with 2 decimals (about 1 km), at most 80 stops.
+function encodeRoute(pts) {
+  return pts.slice(0, 81).map(p => [p.ll[0].toFixed(2), p.ll[1].toFixed(2), p.mode ? MODE_KEYS.indexOf(p.mode) : -1, p.line || 0].join(',')).join(';');
+}
+function decodeRoute(str) {
+  if (typeof str !== 'string' || str.length > 3000) return null;
+  const out = [];
+  for (const part of str.split(';').slice(0, 81)) {
+    const [la, lo, m, l] = part.split(',').map(Number);
+    if (!num(la, -90, 90) || !num(lo, -180, 180) || !Number.isInteger(m) || m < -1 || m >= MODE_KEYS.length) return null;
+    out.push(m < 0 ? { ll: [la, lo] } : { ll: [la, lo], mode: MODE_KEYS[m], line: Number.isInteger(l) ? l : 0 });
+  }
+  return out.length >= 2 ? out : null;
+}
+// Keeps each player's fastest result, fastest first, at most 12.
+function mergeResults(a, b) {
+  const best = new Map();
+  for (const r of [...(a || []), ...(b || [])]) { const k = r.n.toLowerCase(), o = best.get(k); if (!o || r.h < o.h) best.set(k, r); }
+  return [...best.values()].sort((x, y) => x.h - y.h).slice(0, 12);
+}
+function encodeChallenge(c) {
+  const j = JSON.stringify({ v: 1, id: c.id, f: c.f, t: c.t, r: c.r, s: c.s, res: c.res.map(r => ({ n: r.n, h: Math.round(r.h * 100) / 100, g: r.g, p: r.p })) });
+  return b64e(j).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeChallenge(code) {
+  try {
+    if (typeof code !== 'string' || code.length > 60000) return null;
+    const o = JSON.parse(b64d(code.replace(/-/g, '+').replace(/_/g, '/')));
+    const place = (x, d) => Array.isArray(x) && num(x[1], -90, 90) && num(x[2], -180, 180) ? [cleanName(x[0], d), x[1], x[2]] : null;
+    const f = place(o.f, 'Start'), t = place(o.t, 'Finish');
+    if (!o || o.v !== 1 || !f || !t || !RULES[o.r] || !num(o.s, 1, 2 ** 31) || typeof o.id !== 'string' || !/^[a-z0-9]{4,16}$/.test(o.id)) return null;
+    const res = [];
+    for (const r of Array.isArray(o.res) ? o.res.slice(0, 12) : []) {
+      if (!r || !num(r.h, 0, 1e7) || !['A+', 'A', 'B', 'C', 'D', 'F', '?'].includes(r.g)) continue;
+      res.push({ n: cleanName(r.n, 'Player'), h: r.h, g: r.g, p: decodeRoute(r.p) ? r.p : '' });
+    }
+    return { v: 1, id: o.id, f, t, r: o.r, s: Math.floor(o.s), res: mergeResults(res, []) };
+  } catch { return null; }
+}
+
+if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf, encodeRoute, decodeRoute, mergeResults, encodeChallenge, decodeChallenge };

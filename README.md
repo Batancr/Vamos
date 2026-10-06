@@ -6,6 +6,8 @@ Live site (once GitHub Pages is on): https://batancr.github.io/Vamos/
 
 ## How it plays
 - Draw your route as lines: tap to add stops, or press ✏️ and drag to draw freehand. Tap any line (on the map or in the list) to change how you travel it.
+- Zoom in and the map switches to satellite imagery (🛰️ turns it off). 🔭 opens Google Street View or Google's satellite map at the middle of the map.
+- **Challenge friends:** after a trip, send a link. Friends play the same trip in Fair mode and send theirs back, and everyone who plays lands on one leaderboard, with their routes shown once you finish. **Custom** lets you tap any start and finish and name them.
 - There's a new trip every day ("Trip #N"), plus random practice trips.
 - Rule sets: Classic, Human power, Triathlon, No wheels, Balloonatic, Rocket Man, Silly season.
 - Real terrain matters. Hills slow walking and cycling, mountains slow cars and trains, balloons crash into peaks above 4,500 m, boats need water and cars need land.

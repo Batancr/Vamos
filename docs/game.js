@@ -2,7 +2,7 @@
 // ---------- state ----------
 const $ = id => document.getElementById(id);
 const cv = $('map'), ctx = cv.getContext('2d');
-const S = { trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
+const S = { trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
 let baseImg, W = 0, H = 0, DPR = 1;
 
 // ---------- progress (stats and badges), kept in this browser only ----------
@@ -29,12 +29,60 @@ const legPts = l => MODES[l.mode].terrain === 'space' ? arc(l.a, l.b) : [l.a, l.
 const tripTotal = () => S.legs.reduce((s, l) => s + l.total, 0);
 const atEnd = () => S.pts.length > 1 && S.pts[S.pts.length - 1].end;
 
+// ---------- satellite imagery ----------
+// EOxCloudless Sentinel-2 mosaic in plain lat/lon tiles (the WGS84 tile set), which matches this map's projection,
+// so tiles draw straight onto the canvas. Level z has 2^(z+1) × 2^z tiles of 256 px, each 180/2^z degrees wide.
+// Licence: CC BY-NC-SA 4.0, free for non-commercial use with the credit shown on the map (cloudless.eox.at).
+const SAT = window.VAMOS_SAT || {
+  tile: (z, r, c) => `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024/default/WGS84/${z}/${r}/${c}.jpg`,
+  maxZ: 13,
+  credit: '<a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)',
+};
+const MAX_PPD = 1500;  // about 75 m per screen pixel: a broad look at the scenery, not street level
+const SAT_FROM = 10;   // the built-in relief map is sharp enough below this zoom (pixels per degree)
+let satPref = true; try { satPref = localStorage.getItem('vamos.sat') !== 'off'; } catch {}
+const satTiles = new Map();
+const satOn = () => satPref && S.view.ppd >= SAT_FROM;
+let satQueued = false;
+function satRedraw() { if (!satQueued) { satQueued = true; requestAnimationFrame(() => { satQueued = false; draw(); }); } }
+function satTile(z, r, c) {
+  const k = `${z}/${r}/${c}`;
+  let t = satTiles.get(k);
+  if (!t) {
+    t = { img: new Image(), ok: false };
+    t.img.onload = () => { t.ok = true; satRedraw(); };
+    t.img.onerror = () => { t.bad = true; };
+    t.img.src = SAT.tile(z, r, c);
+    satTiles.set(k, t);
+    if (satTiles.size > 600) satTiles.delete(satTiles.keys().next().value); // forget the oldest tiles
+  }
+  return t;
+}
+function drawSat() {
+  const z = Math.max(0, Math.min(SAT.maxZ, Math.ceil(Math.log2(S.view.ppd * DPR * 180 / 256))));
+  const span = 180 / 2 ** z, [la0, lo0] = toLL(0, 0), [la1, lo1] = toLL(W, H);
+  const r0 = Math.max(0, Math.floor((90 - la0) / span)), r1 = Math.min(2 ** z - 1, Math.floor((90 - la1) / span));
+  const c0 = Math.max(0, Math.floor((lo0 + 180) / span)), c1 = Math.min(2 ** (z + 1) - 1, Math.floor((lo1 + 180) / span));
+  let drawn = 0;
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const [x, y] = toXY(90 - r * span, -180 + c * span), sz = span * S.view.ppd;
+    const t = satTile(z, r, c);
+    if (t.ok) { ctx.drawImage(t.img, x, y, sz + 0.5, sz + 0.5); drawn++; continue; }
+    // still loading: stretch the nearest coarser tile that has arrived
+    for (let up = 1; up <= 4 && z - up >= 0; up++) {
+      const pr = r >> up, pc = c >> up, p = satTiles.get(`${z - up}/${pr}/${pc}`);
+      if (p && p.ok) { const n = 2 ** up, s = 256 / n; ctx.drawImage(p.img, (c - pc * n) * s, (r - pr * n) * s, s, s, x, y, sz + 0.5, sz + 0.5); drawn++; break; }
+    }
+  }
+  $('credit').hidden = !drawn;
+}
+
 // ---------- view / projection (equirectangular) ----------
 function toXY(la, lo) { const v = S.view; return [W / 2 + (lo - v.lon) * v.ppd, H / 2 - (la - v.lat) * v.ppd]; }
 function toLL(x, y) { const v = S.view; return [v.lat - (y - H / 2) / v.ppd, v.lon + (x - W / 2) / v.ppd]; }
 function clampView() {
   const v = S.view, minP = Math.max(W / 360, H / 180);
-  v.ppd = Math.min(Math.max(v.ppd, minP), 400);
+  v.ppd = Math.min(Math.max(v.ppd, minP), MAX_PPD);
   const hw = W / 2 / v.ppd, hh = H / 2 / v.ppd;
   v.lon = Math.min(Math.max(v.lon, -180 + hw), 180 - hw);
   v.lat = Math.min(Math.max(v.lat, -90 + hh), 90 - hh);
@@ -81,6 +129,7 @@ function draw() {
     const [x0, y0] = toXY(90, -180), [x1, y1] = toXY(-90, 180);
     ctx.imageSmoothingEnabled = true; ctx.drawImage(baseImg, x0, y0, x1 - x0, y1 - y0);
   }
+  if (satOn()) drawSat(); else $('credit').hidden = true;
   // borders
   ctx.strokeStyle = 'rgba(28,42,51,.35)'; ctx.lineWidth = 0.8; ctx.setLineDash([]); ctx.beginPath();
   for (const l of BORDERS) { let X = 0, Y = 0; for (let k = 0; k < l.length; k += 2) { X += l[k]; Y += l[k + 1]; const [x, y] = toXY(Y / 20, X / 20); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } }
@@ -97,6 +146,7 @@ function draw() {
     const M = MODES[r.mode];
     pathLine(M.terrain === 'space' ? arc(r.pts[0], r.pts[r.pts.length - 1]) : r.pts, M.color, [2, 3], 3);
   }
+  if (S.challenge && S.finished && S.ghosts) drawGhosts();
   // player lines: a gold halo marks the one being edited, one badge per line shows its mode
   for (const L of S.lines) {
     const M = MODES[L.mode];
@@ -121,6 +171,10 @@ function draw() {
   pin(S.trip.a[0], S.trip.a[1], S.trip.from.split(',')[0], '#2f7a45');
   pin(S.trip.b[0], S.trip.b[1], S.trip.to.split(',')[0], '#c8402f');
   if (S.anim) drawTraveller(S.anim);
+  if (!$('lookMenu').hidden) { // the spot "Look around" will open
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(W / 2, H / 2, 11, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#c8402f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(W / 2, H / 2, 11, 0, 7); ctx.moveTo(W / 2 - 17, H / 2); ctx.lineTo(W / 2 + 17, H / 2); ctx.moveTo(W / 2, H / 2 - 17); ctx.lineTo(W / 2, H / 2 + 17); ctx.stroke();
+  }
 }
 // Rockets fly as a lifted arc on the flat map.
 function arc(a, b) {
@@ -183,7 +237,7 @@ function selectLine(id) { S.sel = S.sel === id ? null : id; const L = S.lines.fi
 function renderLegs() {
   const el = $('legs');
   if (!S.legs.length) {
-    el.innerHTML = `<li class="empty">Start at ${S.trip.from.split(',')[0]}. Pick a way to travel, then click the map to add a stop, or press ✏️ and drag to draw a line. Tap any line later to change how you travel it.</li>`;
+    el.innerHTML = `<li class="empty">Start at ${esc(S.trip.from.split(',')[0])}. Pick a way to travel, then click the map to add a stop, or press ✏️ and drag to draw a line. Tap any line later to change how you travel it.</li>`;
   } else {
     el.innerHTML = S.lines.map((L, n) => {
       const M = MODES[L.mode], stops = L.legs.length > 1 ? ` · ${L.legs.length} bends` : '';
@@ -206,15 +260,23 @@ function renderLegs() {
 }
 function setTrip(idx, no) {
   const t = TRIPS[idx % TRIPS.length];
-  S.trip = { from: t[0], a: [t[1], t[2]], to: t[3], b: [t[4], t[5]], idx };
-  S.tripNo = no; S.seed = no || 1 + Math.floor(Math.random() * 1e6);
-  S.fair = !!no; $('fair').checked = S.fair; renderModes(); renderTraveller(); // Fair mode is on by default for the daily trip
+  startTrip({ from: t[0], a: [t[1], t[2]], to: t[3], b: [t[4], t[5]], idx }, no);
+}
+// trip: { from, a: [lat, lon], to, b, idx? }. no: daily trip number, or 0 for practice, custom and challenge trips.
+function startTrip(trip, no, challenge) {
+  S.trip = trip; S.challenge = challenge || null; S.finished = false; S.picking = null;
+  S.tripNo = no; S.seed = challenge ? challenge.s : no || 1 + Math.floor(Math.random() * 1e6);
+  S.fair = !!no || !!challenge; $('fair').checked = S.fair; $('fair').disabled = !!challenge; // Fair mode: on for the daily trip, always on in challenges
+  if (!challenge && location.hash.startsWith('#c=')) history.replaceState(null, '', location.pathname + location.search);
   S.pts = [{ ll: S.trip.a }]; S.legs = []; S.lines = []; S.sel = null; S.best = null; S.showBest = false; S.anim = null;
-  $('fromName').textContent = t[0]; $('toName').textContent = t[3];
-  $('fromLL').textContent = fmtLL(t[1], t[2]); $('toLL').textContent = fmtLL(t[4], t[5]);
-  $('tripNo').textContent = no ? `Trip #${no}` : 'Practice trip';
-  $('result').hidden = true; $('result').innerHTML = '';
-  renderLegs(); fitTrip();
+  renderTripHead(); renderModes(); renderTraveller(); renderChallenge();
+  $('tripNo').textContent = challenge ? '⚔️ Challenge' : no ? `Trip #${no}` : 'Practice trip';
+  $('names').hidden = true; $('result').hidden = true; $('result').innerHTML = '';
+  recompute(); renderLegs(); fitTrip();
+}
+function renderTripHead() {
+  $('fromName').textContent = S.trip.from; $('toName').textContent = S.trip.to;
+  $('fromLL').textContent = fmtLL(...S.trip.a); $('toLL').textContent = fmtLL(...S.trip.b);
 }
 // A stop near the destination snaps onto it and finishes the trip.
 function snapEnd(ll) {
@@ -317,7 +379,7 @@ function showResult(best) {
     earned = r.newBadges.map(B => `<li>${B.icon} New badge: <b>${B.name}</b></li>`).join('') +
       r.gains.map(x => `<li>${MODES[x.mode].icon} ${MODES[x.mode].name} stat up to +${x.to}%${S.fair ? ' (used when Fair mode is off)' : ''}</li>`).join('');
   }
-  const share = `Vamos ${S.tripNo ? '#' + S.tripNo : '(practice)'} · ${rules.name} · ${S.fair ? 'Fair mode' : 'Stats on'}\n${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]}\n${icons.join('')} ${fmtH(you)}\nBest route ${par ? fmtH(par) : '—'} · Grade ${g}`;
+  const share = `Vamos ${S.challenge ? '⚔️ challenge' : S.tripNo ? '#' + S.tripNo : '(practice)'} · ${rules.name} · ${S.fair ? 'Fair mode' : 'Stats on'}\n${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]}\n${icons.join('')} ${fmtH(you)}\nBest route ${par ? fmtH(par) : '—'} · Grade ${g}`;
   const bestLine = best ? best.runs.filter(r => r.km >= 5 || MODES[r.mode].terrain === 'space').map(r => `${MODES[r.mode].icon} ${fmtKm(r.km)}`).join(' → ') : 'No route exists under these rules.';
   const note = g === 'A+' ? 'You beat the computer. Its route assumes full rest days, so short hops can sneak under it.' : '';
   $('result').innerHTML = `<div class="result">
@@ -329,19 +391,83 @@ function showResult(best) {
     <p class="hint">Graded against the best route at ${S.fair ? 'base speeds (Fair mode)' : 'your stats'}.</p>
     ${earned ? `<ul class="events earned">${earned}</ul>` : ''}
     <div class="label">Best route (dotted on the map)</div><p class="hint">${bestLine}</p>
-    <div class="label">Share</div><pre class="share" id="shareText">${share}</pre>
+    <div class="label">Share</div><pre class="share" id="shareText">${esc(share)}</pre>
+    <div class="label">Challenge friends</div>
+    <div class="row"><input id="myName" class="txt" maxlength="40" placeholder="Your name" aria-label="Your name" value="${esc(myName())}"><button class="btn" id="sendCh">${S.challenge ? 'Send to more friends' : 'Challenge a friend'}</button></div>
+    <p class="hint" id="chMsg">${S.fair ? 'They play the same trip at base speed, then send their result back. Everyone who plays goes on one leaderboard.' : 'Your time goes on the board only in Fair mode, but friends can still play this trip.'}</p>
+    <input id="chLink" class="txt" readonly hidden aria-label="Challenge link">
     <div class="row"><button class="btn" id="copy">Copy result</button><button class="btn" id="toggleBest">${S.showBest ? 'Hide' : 'Show'} best route</button><button class="btn" id="again">Try again</button></div>
   </div>`;
   $('result').hidden = false;
+  const mine = !dq && S.fair ? { n: myName(), h: you, g, p: encodeRoute(S.pts) } : null;
+  if (S.challenge && mine) { S.challenge.res = mergeResults(S.challenge.res, [mine]); saveBoard(S.challenge); }
+  S.finished = true; renderChallenge(); draw();
+  $('myName').oninput = e => { try { localStorage.setItem('vamos.name', e.target.value.trim()); } catch {} if (mine && S.challenge) { mine.n = myName(); saveBoard(S.challenge); renderChallenge(); } };
+  $('sendCh').onclick = () => {
+    const name = myName(), c = S.challenge || { v: 1, id: Math.random().toString(36).slice(2, 10).padEnd(6, '0'), f: [S.trip.from, ...S.trip.a], t: [S.trip.to, ...S.trip.b], r: S.rules, s: S.seed, res: [] };
+    if (mine) { mine.n = name; c.res = mergeResults(c.res.filter(r => r !== mine), [mine]); }
+    S.challenge = c; saveBoard(c); renderChallenge();
+    const url = `${location.href.split('#')[0]}#c=${encodeChallenge(c)}`, text = `Vamos challenge: ${S.trip.from} → ${S.trip.to}. ${mine ? `I did it in ${fmtH(you)}. ` : ''}Can you beat it?`;
+    $('chLink').value = url; $('chLink').hidden = false;
+    const copied = () => { $('chMsg').textContent = 'Link copied. Paste it in a chat with your friends.'; };
+    const copy = () => { try { navigator.clipboard.writeText(url).then(copied, () => { $('chLink').select(); $('chMsg').textContent = 'Copy the link below.'; }); } catch { $('chLink').select(); } };
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) navigator.share({ title: 'Vamos challenge', text, url }).catch(copy); else copy();
+  };
   $('copy').onclick = () => {
     const done = () => { $('copy').textContent = 'Copied'; };
     try { navigator.clipboard.writeText(share).then(done, () => selectShare()); } catch { selectShare(); }
   };
   $('toggleBest').onclick = () => { S.showBest = !S.showBest; $('toggleBest').textContent = `${S.showBest ? 'Hide' : 'Show'} best route`; draw(); };
-  $('again').onclick = () => { S.pts = [{ ll: S.trip.a }]; S.legs = []; S.lines = []; S.sel = null; S.best = null; S.anim = null; $('result').hidden = true; renderLegs(); draw(); };
+  $('again').onclick = () => { S.pts = [{ ll: S.trip.a }]; S.legs = []; S.lines = []; S.sel = null; S.best = null; S.anim = null; S.finished = false; $('result').hidden = true; renderChallenge(); renderLegs(); draw(); };
   $('result').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 function selectShare() { const r = document.createRange(); r.selectNodeContents($('shareText')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('copy').textContent = 'Press Ctrl+C'; }
+
+// ---------- friend challenges ----------
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function myName() { try { return cleanName(($('myName') && $('myName').value) || localStorage.getItem('vamos.name'), 'Player'); } catch { return 'Player'; } }
+const GHOST = ['#7b3fa8', '#d9772b', '#1f8a8a', '#b5338a', '#5f8a3a', '#9c6b2f', '#2aa6c9', '#c23b2e'];
+// Boards are kept per challenge, so opening several friends' links builds one leaderboard.
+function saveBoard(c) { try { localStorage.setItem('vamos.ch.' + c.id, JSON.stringify(c.res)); } catch {} }
+function loadBoard(c) { try { const r = JSON.parse(localStorage.getItem('vamos.ch.' + c.id) || '[]'); if (Array.isArray(r)) c.res = mergeResults(c.res, r.filter(x => x && typeof x.n === 'string' && typeof x.h === 'number')); } catch {} }
+function openChallenge(code) {
+  const c = decodeChallenge(code);
+  if (!c) { toast('That challenge link didn\'t work. Ask your friend to send it again.', 4000); return false; }
+  loadBoard(c); saveBoard(c);
+  S.rules = c.r; $('rules').value = c.r; $('rulesNote').textContent = RULES[c.r].note;
+  startTrip({ from: c.f[0], a: [c.f[1], c.f[2]], to: c.t[0], b: [c.t[1], c.t[2]] }, 0, c);
+  return true;
+}
+function renderChallenge() {
+  const c = S.challenge, el = $('challenge');
+  el.hidden = !c; if (!c) return;
+  const me = myName().toLowerCase(), top = c.res[0];
+  el.innerHTML = `<div class="label">⚔️ Challenge · ${esc(RULES[c.r].name)} · Fair mode</div>
+    <p class="hint">${top ? `Beat ${esc(top.n)}'s ${fmtH(top.h)}.` : 'Be the first on the board.'} ${S.finished ? '' : 'Friends\' routes show once you finish.'}</p>
+    ${c.res.length ? `<ol class="board">${c.res.map((r, k) => `<li class="${r.n.toLowerCase() === me ? 'me' : ''}"><span>${['🥇', '🥈', '🥉'][k] || k + 1}</span><span>${S.finished && r.p ? `<i style="background:${GHOST[k % GHOST.length]}"></i>` : ''}${esc(r.n)}</span><span class="t">${fmtH(r.h)} · ${r.g}</span></li>`).join('')}</ol>` : ''}
+    ${S.finished && c.res.some(r => r.p) ? `<label class="fair"><input type="checkbox" id="ghosts" ${S.ghosts ? 'checked' : ''}><span>Show everyone's routes</span></label>` : ''}`;
+  if ($('ghosts')) $('ghosts').onchange = e => { S.ghosts = e.target.checked; draw(); };
+}
+function drawGhosts() {
+  S.challenge.res.forEach((r, k) => {
+    const pts = r.p && decodeRoute(r.p);
+    if (pts) pathLine(pts.map(p => p.ll), GHOST[k % GHOST.length], [6, 4], 3);
+  });
+}
+// Custom trips: tap a start and a finish, then name them.
+$('custom').onclick = () => {
+  S.picking = 'start'; S.sel = null; $('names').hidden = true;
+  toast('Tap where your trip starts', 3000); $('hint').textContent = 'Custom trip: tap the start on the map.';
+};
+function pickPlace(ll) {
+  if (S.picking === 'start') { S.pickA = ll; S.picking = 'end'; toast('Now tap the finish', 3000); $('hint').textContent = 'Custom trip: now tap the finish.'; return; }
+  if (hav(...S.pickA, ...ll) < 100) { toast('Pick a finish at least 100 km away', 2500); return; }
+  startTrip({ from: 'Start', a: S.pickA, to: 'Finish', b: ll }, 0);
+  $('nameA').value = ''; $('nameB').value = ''; $('names').hidden = false;
+}
+$('nameA').oninput = e => { S.trip.from = cleanName(e.target.value, 'Start'); renderTripHead(); draw(); };
+$('nameB').oninput = e => { S.trip.to = cleanName(e.target.value, 'Finish'); renderTripHead(); draw(); };
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#c=')) openChallenge(location.hash.slice(3)); });
 
 // ---------- traveller panel: Fair mode, stats, badges, backup ----------
 function renderTraveller() {
@@ -366,7 +492,7 @@ $('restore').onclick = () => {
 
 // ---------- input ----------
 const ptrs = new Map(); let drag = null, pinch = null;
-const canDraw = () => S.tool === 'draw' && !S.playing && !atEnd() && S.sel == null;
+const canDraw = () => S.tool === 'draw' && !S.playing && !atEnd() && S.sel == null && !S.picking;
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
   if (ptrs.size === 1) {
@@ -404,7 +530,8 @@ function endPtr(e) {
     if (drag && drag.moved && e.type === 'pointerup') { addLine(simplifyPath(st, 6).slice(1).filter((p, k, a) => k === a.length - 1 || Math.hypot(p[0] - a[k + 1][0], p[1] - a[k + 1][1]) > 8).map(p => toLL(...p))); }
     else draw();
   }
-  if (tap) {
+  if (tap && S.picking) pickPlace(toLL(e.offsetX, e.offsetY));
+  else if (tap) {
     const hit = lineAt(e.offsetX, e.offsetY);
     if (hit != null) selectLine(hit);
     else if (S.sel != null) selectLine(S.sel); // tapping empty map ends editing
@@ -418,6 +545,20 @@ cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.delta
 $('zin').onclick = () => zoomAt(1.5, W / 2, H / 2);
 $('zout').onclick = () => zoomAt(1 / 1.5, W / 2, H / 2);
 $('zfit').onclick = fitTrip;
+$('sat').onclick = () => {
+  satPref = !satPref; try { localStorage.setItem('vamos.sat', satPref ? 'on' : 'off'); } catch {}
+  $('sat').setAttribute('aria-pressed', satPref);
+  if (satPref && S.view.ppd < SAT_FROM) toast('Zoom in to see satellite imagery');
+  draw();
+};
+// Look around: opens Google Maps at the middle of the map (Maps URLs need no API key).
+$('look').onclick = () => {
+  const open = $('lookMenu').hidden; $('lookMenu').hidden = !open; $('look').setAttribute('aria-expanded', open);
+  if (open) { const [la, lo] = toLL(W / 2, H / 2), ll = `${la.toFixed(5)}%2C${lo.toFixed(5)}`, z = Math.round(Math.max(3, Math.min(18, Math.log2(S.view.ppd * 360 / 256))));
+    $('lookSV').href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`;
+    $('lookSat').href = `https://www.google.com/maps/@?api=1&map_action=map&center=${ll}&zoom=${z}&basemap=satellite`; }
+  draw();
+};
 $('undo').onclick = () => { if (S.pts.length > 1) { const id = S.pts[S.pts.length - 1].line; while (S.pts.length > 1 && S.pts[S.pts.length - 1].line === id) S.pts.pop(); routeChanged(); } }; // undo removes the whole last line
 $('clear').onclick = () => { S.pts = [{ ll: S.trip.a }]; S.sel = null; routeChanged(); };
 $('doneSel').onclick = () => { S.sel = null; renderModes(); renderLegs(); draw(); };
@@ -455,9 +596,10 @@ async function loadAssets() {
   try { await loadAssets(); }
   catch (err) { $('hint').textContent = 'The map data did not load. Check your connection and reload the page.'; return; }
   $('rulesNote').textContent = RULES[S.rules].note;
+  $('credit').innerHTML = SAT.credit; $('sat').setAttribute('aria-pressed', satPref);
   S.progress = loadProgress();
   renderModes();
   resize();
   const d = dailyTrip(Date.now());
-  setTrip(d.idx, d.no);
+  if (!(location.hash.startsWith('#c=') && openChallenge(location.hash.slice(3)))) setTrip(d.idx, d.no);
 })();

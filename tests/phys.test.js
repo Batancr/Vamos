@@ -225,4 +225,35 @@ test('legs drawn as one line are grouped, with their km and time added up', () =
   assert.deepStrictEqual([L[1].id, L[1].mode, L[1].legs], [2, 'car', [2]]);
 });
 
+// ---------- friend challenges ----------
+const CH = { id: 'ab12cd', f: ['Reykjavík', 64.15, -21.94], t: ['Lisbon', 38.72, -9.14], r: 'classic', s: 4242,
+  res: [{ n: 'Alex', h: 301.234, g: 'F', p: '64.15,-21.94,-1,0;64.00,-23.30,8,1;38.72,-9.14,8,1' }] };
+test('challenge links round-trip, with times rounded to 0.01 h and accents kept', () => {
+  const c = V.decodeChallenge(V.encodeChallenge(CH));
+  assert.deepStrictEqual(c.f, CH.f);
+  assert.strictEqual(c.r, 'classic'); assert.strictEqual(c.s, 4242);
+  assert.deepStrictEqual(c.res, [{ n: 'Alex', h: 301.23, g: 'F', p: CH.res[0].p }]);
+  assert.ok(!/[+/=]/.test(V.encodeChallenge(CH))); // safe to paste in a URL
+});
+test('challenge links reject junk and bad fields', () => {
+  assert.strictEqual(V.decodeChallenge('hello'), null);
+  const bad = (patch) => V.decodeChallenge(V.encodeChallenge({ ...CH, ...patch }));
+  assert.strictEqual(bad({ r: 'planes' }), null);              // no such rule set
+  assert.strictEqual(bad({ f: ['X', 95, 0] }), null);          // latitude past the pole
+  assert.strictEqual(bad({ id: '<script>' }), null);
+  const c = bad({ res: [{ n: 'Sam', h: -5, g: 'A' }, { n: 'x'.repeat(99), h: 10, g: 'Z' }, { n: 'Kim', h: 50, g: 'B', p: 'nope' }] });
+  assert.deepStrictEqual(c.res, [{ n: 'Kim', h: 50, g: 'B', p: '' }]); // negative time and unknown grade dropped, bad route blanked
+});
+test('routes encode to 2 decimals and decode back to stops with modes and lines', () => {
+  const pts = [{ ll: [64.15, -21.94] }, { ll: [64.004, -23.296], mode: 'sail', line: 1 }, { ll: [38.72, -9.14], mode: 'walk', line: 2 }];
+  const str = V.encodeRoute(pts);
+  assert.strictEqual(str, `64.15,-21.94,-1,0;64.00,-23.30,${V.MODE_KEYS.indexOf('sail')},1;38.72,-9.14,0,2`);
+  assert.deepStrictEqual(V.decodeRoute(str), [{ ll: [64.15, -21.94] }, { ll: [64, -23.3], mode: 'sail', line: 1 }, { ll: [38.72, -9.14], mode: 'walk', line: 2 }]);
+  assert.strictEqual(V.decodeRoute('1,2,99,0;3,4,0,0'), null); // mode 99 doesn't exist
+});
+test('leaderboard keeps each player\'s best time, fastest first', () => {
+  const r = V.mergeResults([{ n: 'Alex', h: 30 }, { n: 'Sam', h: 20 }], [{ n: 'alex', h: 25 }, { n: 'Kim', h: 40 }]);
+  assert.deepStrictEqual(r.map(x => [x.n, x.h]), [['Sam', 20], ['alex', 25], ['Kim', 40]]);
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

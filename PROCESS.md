@@ -4,6 +4,7 @@
 - **5 Oct 2026:** brainstormed geography game ideas and picked Vamos. Built a playable prototype as a Claude artifact, then moved it into this repo layout (Fox project routine) with Node tests and a preview build.
 - **5–6 Oct 2026:** water, new modes and progression (ideas reviewed in the project's `vamos/ideas/swimming-modes-progression.md`; scuba was rejected). Swimming now uses the average Channel swimmer's pace. Added a lakes layer, seven new modes (hitchhiking, sailboat, kayak, paraglider, dog sled, giant tortoise, human cannonball), a Silly season rule set, earned stats, 13 badges, Fair mode and backup codes. Unbuilt mode ideas are kept in `vamos/ideas/travel-mode-backlog.md` in the project files.
 - **6 Oct 2026:** draw-then-assign. Routes are made of lines: a tap adds a one-segment line, and the ✏️ tool turns a freehand drag into one line with several bends. Tapping a line selects it, and the mode buttons then change that whole line.
+- **6 Oct 2026:** satellite view, Look around links, custom trips and friend challenges with a leaderboard.
 
 ## The gap (checked 5 Oct 2026)
 - The closest existing game is [Georoute](https://georoutegame.com/): you connect cities by car, boat, ship, plane or helicopter and score for the fastest or cheapest route. It works in city-to-city hops.
@@ -24,6 +25,9 @@
 - **The best route uses day-averaged speeds.** The solver spreads rest over each hour, so for example walking counts as 5 km/h × 10/24. The player's own legs use real days with nights. On long trips the two match; on short hops a player can beat the solver, and the page says so.
 - **Straight-line legs on a plain lat/lon map.** This is simple to draw and score. Legs can't wrap across the Pacific (from 180° to −180°), and the solver doesn't wrap either, so the two stay consistent.
 - **Lines and legs.** A line is what the player drew in one go and has one mode; inside it are straight legs, which are what the rules score. A freehand stroke is simplified (Ramer–Douglas–Peucker, 6 px) so a wobbly finger doesn't make hundreds of legs. Switching a line to a rocket collapses it to one hop to the spaceport nearest its end. In draw mode one finger draws and two fingers pan and zoom.
+- **Satellite imagery: EOxCloudless (Sentinel-2) 2024.** Checked 6 Oct 2026. Esri World Imagery needs an ArcGIS licence (Esri staff on the Esri Community forum), so it's out. EOxCloudless is CC BY-NC-SA 4.0: free for non-commercial use with the credit visible wherever it shows (cloudless.eox.at/documentation/license). **If Vamos ever earns money (ads, paid features), this needs EOX's paid licence or a switch to NASA GIBS (public domain, about 250 m per pixel).** The WGS84 tile set lines up exactly with this plain lat/lon map, so tiles draw straight onto the canvas with no reprojection. Imagery shows from 10 pixels per degree and max zoom is 1,500 pixels per degree (about 75 m per screen pixel): a broad look at the scenery, as Alexander asked, not street level.
+- **Look around** uses Google Maps URLs, which need no API key (developers.google.com/maps/documentation/urls). Real Street View inside the page would need a paid Google API key, so it opens a new tab instead.
+- **Challenges without a server.** A challenge link (`#c=…`) carries the trip, rule set, hitchhiking seed and up to 12 results (name, time, grade, route at 2 decimals). Opening several friends' links merges them into one board kept in localStorage per challenge id. Challenges always use Fair mode so stats can't decide them. Every field in a link is checked and every name is HTML-escaped, since links come from anyone. A live, real-time "battle royale" would need a server (and probably accounts), so it isn't built.
 - **Same-mode legs form one stint.** Drawing a car route in five clicks costs one car hire and shares nights, so extra clicks aren't penalised.
 - **Grace zones.** There are 15 km at each end of a leg for docks and coasts. Land modes may also cross short stretches of water (3 km on foot, 25 km by car for bridges, 55 km by train for tunnels), and boats may cross 25 km of land (canals).
 - **Art:** a stick figure plus emoji for vehicles, and a cartoon relief map made from the elevation data. No image assets to license.
@@ -75,6 +79,9 @@ Data sources and licences are in `data/raw/README.md`.
 - [ ] Add streaks and best grades per trip.
 - [ ] One long practice trip can max a stat (e.g. 2,250 km of kayaking). Consider a per-trip limit if that feels too quick.
 - [ ] Badges don't unlock modes yet; the ideas doc suggested unlocking fun modes.
+- [ ] Satellite licence is non-commercial only (see decisions).
+- [ ] Live multiplayer races would need a backend; challenge links are the static version.
+- [ ] Very long freehand routes make long challenge links; consider compressing them if chat apps cut them off.
 - [ ] Add a minimum time per mode as a custom setting (Triathlon already uses 1 h).
 - [ ] Possibly let legs wrap across the Pacific.
 - [ ] Possibly add more trips; small towns make better puzzles than capitals.
