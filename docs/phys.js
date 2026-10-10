@@ -68,6 +68,24 @@ const MODES = {
   horse:   { name: 'Horse', icon: '🐎', color: '#8b5a2b', dash: [6, 2], speed: 12, hours: 8, terrain: 'land', climb: 500, setup: 1, gap: 3, noIce: true, roughK: 600, maxElev: 3000, mount: true },
   camelride: { name: 'Camel ride', icon: '🐫', color: '#c9a14a', dash: [4, 3], speed: 4, hours: 10, terrain: 'land', climb: 400, setup: 1, gap: 3, noIce: true, mount: true },
   elephant: { name: 'Elephant', icon: '🐘', color: '#7d8a96', dash: [8, 3], speed: 6, hours: 10, terrain: 'land', climb: 400, setup: 1, gap: 10, noIce: true, mount: true },
+  // From the travel-ideas backlog (6 Oct 2026). Speeds are game-balance guesses.
+  // chilly: slower in the cold. ports: loads and unloads at ports only. flatOnly: no ground rougher than this many metres.
+  // wobbly: falls off on ground rougher than this. downhill: only rolls downhill, up to this many km/h faster on steep slopes.
+  // fromSite: each leg starts at a spaceport. noSolve: the best-route computer never uses it.
+  skis:     { name: 'Cross-country skis', icon: '⛷️', color: '#5d8fc9', dash: [6, 2, 1, 2], speed: 6, hours: 8, terrain: 'snow', climb: 400, human: true, setup: 0.25, gap: 3 },
+  moto:     { name: 'Motorbike', icon: '🏍️', color: '#a83232', dash: [8, 2], speed: 70, hours: 10, terrain: 'land', climb: 0, setup: 0.5, gap: 25, noIce: true, roughK: 800, chilly: true },
+  bus:      { name: 'Coach', icon: '🚌', color: '#c99a12', dash: [10, 3], speed: 60, hours: 16, terrain: 'land', climb: 0, setup: 2, gap: 25, noIce: true, roughK: 300 },
+  cargo:    { name: 'Cargo ship', icon: '🚢', color: '#34495e', dash: [14, 4], speed: 35, hours: 24, terrain: 'water', climb: 0, setup: 12, gap: 25, ports: true },
+  ostrich:  { name: 'Ostrich', icon: '🐦', color: '#8a6d5a', dash: [3, 2], speed: 50, hours: 1, terrain: 'land', climb: 300, setup: 1, gap: 3, noIce: true, mount: true },
+  whale:    { name: 'Whale', icon: '🐋', color: '#2b6cb0', dash: [12, 3, 3, 3], speed: 6, hours: 24, terrain: 'whale', climb: 0, setup: 6, gap: 25, mount: true },
+  pogo:     { name: 'Pogo stick', icon: '🤸', color: '#e84393', dash: [1, 3], speed: 4, hours: 2, terrain: 'land', climb: 0, human: true, setup: 0, gap: 0.5, noIce: true, flatOnly: 100, silly: true },
+  unicycle: { name: 'Unicycle', icon: '🎪', color: '#9b59b6', dash: [2, 2], speed: 8, hours: 3, terrain: 'land', climb: 400, human: true, setup: 0, gap: 3, noIce: true, wobbly: 50, silly: true },
+  trebuchet:{ name: 'Trebuchet', icon: '🏰', color: '#7f6a4f', dash: [1, 6], speed: 1 / 24, hours: 24, terrain: 'land', climb: 0, setup: 0, gap: 1, silly: true },
+  flamingo: { name: 'Inflatable flamingo', icon: '🦩', color: '#f78fb3', dash: [2, 4], speed: 2, hours: 24, terrain: 'water', climb: 0, setup: 0.25, gap: 5, silly: true },
+  zorb:     { name: 'Zorb ball', icon: '🫧', color: '#48b1d9', dash: [4, 4], speed: 3, hours: 6, terrain: 'land', climb: 0, setup: 0.5, gap: 1, noIce: true, downhill: 40, silly: true },
+  trolley:  { name: 'Shopping trolley', icon: '🛒', color: '#7a8b8c', dash: [5, 3], speed: 4, hours: 6, terrain: 'land', climb: 0, setup: 0, gap: 1, noIce: true, downhill: 25, silly: true },
+  jetpack:  { name: 'Jetpack', icon: '🎒', color: '#e67e22', dash: [10, 2], speed: 100, hours: 24, terrain: 'any', climb: 0, setup: 0.5, gap: 0, maxKm: 25, fromSite: true, silly: true },
+  dig:      { name: 'Dig with a spoon', icon: '🥄', color: '#6d4c41', dash: [1, 2], speed: 0.001, hours: 1, terrain: 'any', climb: 0, setup: 0, gap: 0, noSolve: true, silly: true },
 };
 const MODE_KEYS = Object.keys(MODES);
 
@@ -108,6 +126,46 @@ const SITES = [
   ['Wenchang, China', 19.6, 110.9], ['Naro, South Korea', 34.4, 127.5], ['Tanegashima, Japan', 30.4, 131.0],
   ['Vostochny, Russia', 51.9, 128.3], ['Māhia, New Zealand', -39.3, 177.9],
 ];
+// Ports for cargo ships: [name, lat, lon, rank] from docs/data/places.json, handed over by the page with setPorts.
+let PORTS = [];
+function setPorts(list) { PORTS = Array.isArray(list) ? list : []; }
+function nearestPort(la, lo) {
+  let b = null, bd = Infinity;
+  for (const p of PORTS) { const d = hav(la, lo, p[1], p[2]); if (d < bd) { bd = d; b = p; } }
+  return { port: b, km: bd };
+}
+// Whale lanes: rough humpback and grey whale migration routes, [lat, lon] points placed by hand from general
+// knowledge of where these whales feed and breed. Approximate, not survey data. Whales swim within about 140 km of a lane.
+const WHALE_LANES = [
+  [[57.5, -137], [50, -145], [40, -152], [30, -156], [21, -157.5]],                                  // Alaska to Hawaii
+  [[64, -169], [54.5, -165], [58, -150], [55, -135], [48.5, -126], [40, -125], [34, -121], [27.5, -114.8]], // grey whales: Bering Sea to Baja California
+  [[52, 160], [40, 150], [27, 142]],                                                                  // Kamchatka to the Ogasawara Islands
+  [[65, -24], [55, -35], [40, -50], [20.5, -69.5]],                                                   // Iceland to the Caribbean
+  [[42.5, -68], [30, -68], [21, -69.5]],                                                              // Gulf of Maine to the Caribbean
+  [[70, 15], [62, 0], [50, -15], [35, -22], [16, -24]],                                              // Norway to Cape Verde
+  [[-62, 155], [-45, 158], [-35, 153], [-25, 154], [-17, 147.5]],                                    // Antarctica to the Great Barrier Reef
+  [[-62, 110], [-45, 112], [-33, 114], [-22, 113], [-15, 123]],                                      // Antarctica to the Kimberley coast
+  [[-62, -178], [-40, -176], [-21, -175]],                                                           // Antarctica to Tonga
+  [[-63, -62], [-57, -70], [-40, -75], [-20, -71.5], [-10, -80], [2, -80], [7.5, -80]],              // Antarctic Peninsula to Colombia and Panama
+  [[-60, -35], [-54, -36], [-35, -45], [-18, -38]],                                                  // South Georgia to Brazil
+  [[-62, 30], [-45, 32], [-34, 27], [-27, 34], [-18, 40]],                                           // Antarctica to Mozambique
+  [[-62, 5], [-40, 8], [-25, 11], [-10, 11], [-1, 8]],                                               // Antarctica to Gabon
+];
+let WHALE = null;
+function whaleLane(i) {
+  if (!WHALE) {
+    WHALE = new Uint8Array(G.R * G.C);
+    for (const lane of WHALE_LANES) for (let j = 1; j < lane.length; j++) {
+      const [a, b] = [lane[j - 1], lane[j]], n = Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])) / 0.25);
+      for (let k = 0; k <= n; k++) {
+        const la = a[0] + (b[0] - a[0]) * k / n, lo = a[1] + (b[1] - a[1]) * k / n, c = cellOf(la, lo), r0 = (c / G.C) | 0, c0 = c % G.C;
+        const dc = Math.min(40, Math.ceil(5 / Math.max(0.2, Math.cos(la * Math.PI / 180)))); // about 140 km either side
+        for (let r = Math.max(0, r0 - 5); r <= Math.min(G.R - 1, r0 + 5); r++) for (let q = c0 - dc; q <= c0 + dc; q++) WHALE[r * G.C + ((q + G.C) % G.C)] = 1;
+      }
+    }
+  }
+  return WHALE[i] === 1;
+}
 
 // Returns null if mode m may be in cell i, otherwise the kind of problem.
 function terrainProblem(m, i, lat, lon) {
@@ -116,8 +174,12 @@ function terrainProblem(m, i, lat, lon) {
     if (!land) return 'water';
     if (M.noIce && isIce(i, lat, lon)) return 'ice';
     if (M.maxElev && elevM(i) > M.maxElev) return 'high';
+    if (M.flatOnly && roughM(i) > M.flatOnly) return 'hilly';
   } else if (M.terrain === 'water') {
     if (land) return 'land';
+  } else if (M.terrain === 'whale') {
+    if (land) return 'land';
+    if (!whaleLane(i)) return 'whale';
   } else if (M.terrain === 'snow') {
     if (!land) return 'water';
     if (!isIce(i, lat, lon) && Math.abs(lat) < 60 && biomeOf(i) !== 'ice') return 'snow';
@@ -135,12 +197,17 @@ function terrainProblem(m, i, lat, lon) {
 const windDir = lat => { const a = Math.abs(lat); return a >= 30 && a < 60 ? 1 : -1; };
 // eastFrac: share of the step heading east (-1..1), for winds.
 // boost: the player's earned speed-ups, e.g. { swim: 0.06 } for 6% faster swimming (see boostsFrom).
-function speedAt(m, i, lat, eastFrac, boost) {
+// drop: metres of descent per km, for the modes that roll downhill.
+function speedAt(m, i, lat, eastFrac, boost, drop) {
   const M = MODES[m];
   if (m === 'balloon') return Math.max(2, 15 + 25 * windDir(lat) * eastFrac);
   if (m === 'sail') return Math.max(4, 10 + 8 * windDir(lat) * eastFrac); // tacking still gets you upwind, slowly
-  let v = (m === 'camelride' && biomeOf(i) === 'desert' ? 8 : M.speed) * (1 + totalBoost(boost, m) + terrainBoost(m, i)); // camels are at home in deserts
+  if (m === 'flamingo') return Math.max(0.2, 1 + windDir(lat) * eastFrac); // can't steer: drifts with the surface currents, which roughly follow the winds
+  let base = m === 'camelride' && biomeOf(i) === 'desert' ? 8 : M.speed; // camels are at home in deserts
+  if (M.downhill) base += Math.min(M.downhill, Math.max(0, drop || 0) * 1.5);
+  let v = base * (1 + totalBoost(boost, m) + terrainBoost(m, i));
   if (M.roughK) v = v / (1 + roughM(i) / M.roughK);
+  if (M.chilly && (Math.abs(lat) > 55 || biomeOf(i) === 'ice')) v *= 0.6; // icy roads and numb fingers
   return v;
 }
 function hoursPerDay(m, lat) {
@@ -159,7 +226,7 @@ function climbHours(m, dElev, i, km) {
 function solveRoute(startLL, endLL, allowed, boost) {
   const R = G.R, C = G.C, N = R * C;
   const s = cellOf(startLL[0], startLL[1]), t = cellOf(endLL[0], endLL[1]);
-  const modes = allowed.filter(m => MODES[m].terrain !== 'space');
+  const modes = allowed.filter(m => MODES[m].terrain !== 'space' && !MODES[m].fromSite && !MODES[m].noSolve);
   const space = allowed.filter(m => MODES[m].terrain === 'space');
   const siteCells = SITES.map(x => cellOf(x[1], x[2]));
   const siteOf = new Map(siteCells.map((c, k) => [c, k]));
@@ -184,7 +251,7 @@ function solveRoute(startLL, endLL, allowed, boost) {
   // A* heuristic: straight-line distance at the fastest day-averaged speed, or via the best spaceports.
   let vmax = 0;
   const capB = 1 + STAT_CAP / 100;
-  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : (m === 'camelride' ? 8 : MODES[m].speed) * (capB + totalBoost(null, m) + maxTerrainBoost(m)) * hoursPerDay(m, 0) / 24);
+  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : (m === 'camelride' ? 8 : MODES[m].speed + (MODES[m].downhill || 0)) * (capB + totalBoost(null, m) + maxTerrainBoost(m)) * hoursPerDay(m, 0) / 24);
   const tl = [cellLat((t / C) | 0), cellLon(t % C)];
   const nearSite = (la, lo) => { let b = Infinity; for (const x of SITES) b = Math.min(b, hav(la, lo, x[1], x[2])); return b; };
   const spaceCost = space.length ? Math.min(...space.map(m => MODES[m].setup + MODES[m].flight)) : Infinity;
@@ -216,8 +283,9 @@ function solveRoute(startLL, endLL, allowed, boost) {
         const m = modes[q];
         if (terrainProblem(m, v, vlat, vlon)) continue;
         if (m === 'glide' && !hillU) continue; // the solver only glides off hills, one cell at a time (a cautious par)
+        if (MODES[m].downhill && dE >= 50) continue;
         const frac = m === 'swim' ? hoursPerDay(m, vlat) / 24 : avgK[q];
-        const h = (km / speedAt(m, v, vlat, east, boost) + climbHours(m, dE, v, km)) / frac;
+        const h = (km / speedAt(m, v, vlat, east, boost, -dE / km) + climbHours(m, dE, v, km)) / frac;
         if (h < best) { best = h; bm = midx[q]; }
       }
       if (bm >= 0 && du + best < dist[v]) { dist[v] = du + best; prev[v] = u; pmode[v] = bm; push(dist[v] + heur(v), v); }
@@ -248,6 +316,185 @@ function solveRoute(startLL, endLL, allowed, boost) {
   return { hours, runs };
 }
 
+// ---------- Route planner (the Planner tab, not the game) ----------
+// Planes exist only in the planner. Airports come from OurAirports (docs/data/planner.json). A flight costs
+// 3 h at the airports (check-in, security, bags) plus 30 min of taxi, climb and descent plus 800 km/h in the air.
+// Big airports fly to each other up to 15,000 km; smaller ones fly up to 2,500 km. These are estimates: real
+// schedules, connections and which routes actually exist aren't modelled.
+const PLANE = { name: 'Plane', icon: '✈️', color: '#0b6e99', dash: [14, 5], ground: 3, taxi: 0.5, speed: 800, longKm: 15000, shortKm: 2500 };
+const PLANE_IDX = 100; // stands in for a MODE_KEYS index on planner routes
+const flightHours = km => PLANE.ground + PLANE.taxi + km / PLANE.speed;
+function canFly(a, b, km) { return km <= (a[2] && b[2] ? PLANE.longKm : PLANE.shortKm); }
+// Modes the planner offers: everything the solver understands except character powers.
+const PLAN_MODES = MODE_KEYS.filter(m => !MODES[m].char && !MODES[m].fromSite && !MODES[m].noSolve);
+
+function makeHeap() {
+  let hk = new Float64Array(1 << 16), hn = new Int32Array(1 << 16), hs = 0;
+  return {
+    get size() { return hs; },
+    push(k, n) {
+      if (hs === hk.length) { const a = new Float64Array(hs * 2); a.set(hk); hk = a; const b = new Int32Array(hs * 2); b.set(hn); hn = b; }
+      let j = hs++;
+      while (j > 0) { const p = (j - 1) >> 1; if (hk[p] <= k) break; hk[j] = hk[p]; hn[j] = hn[p]; j = p; }
+      hk[j] = k; hn[j] = n;
+    },
+    pop() {
+      const n = hn[0], lk = hk[--hs], ln = hn[hs];
+      let j = 0;
+      for (;;) { let c = 2 * j + 1; if (c >= hs) break; if (c + 1 < hs && hk[c + 1] < hk[c]) c++; if (hk[c] >= lk) break; hk[j] = hk[c]; hn[j] = hn[c]; j = c; }
+      hk[j] = lk; hn[j] = ln; return n;
+    },
+  };
+}
+const llOf = c => [cellLat((c / G.C) | 0), cellLon(c % G.C)];
+// Straight-line km from every cell to the nearest target cell, along the grid (no terrain). Used to find how
+// close an impossible trip gets, and which way the gap lies.
+function distanceField(dst) {
+  const N = G.R * G.C, d = new Float64Array(N).fill(Infinity), seen = new Uint8Array(N), heap = makeHeap();
+  for (const t of dst) { d[t] = 0; heap.push(0, t); }
+  const DR = [-1, -1, -1, 0, 0, 1, 1, 1], DC = [-1, 0, 1, -1, 1, -1, 0, 1];
+  while (heap.size) {
+    const u = heap.pop(); if (seen[u]) continue; seen[u] = 1;
+    const ur = (u / G.C) | 0, uc = u - ur * G.C, ew = 27.8 * Math.cos(cellLat(ur) * Math.PI / 180);
+    for (let k = 0; k < 8; k++) {
+      const vr = ur + DR[k], vc = uc + DC[k];
+      if (vr < 0 || vr >= G.R || vc < 0 || vc >= G.C) continue;
+      const v = vr * G.C + vc, km = Math.hypot(DC[k] * ew, DR[k] * 27.8);
+      if (d[u] + km < d[v]) { d[v] = d[u] + km; heap.push(d[v], v); }
+    }
+  }
+  return d;
+}
+// What a cell is, in words, for explaining where a trip gets stuck.
+function surfaceOf(i) {
+  const [la, lo] = llOf(i);
+  if (isLake(i)) return 'lake';
+  if (!isLand(i)) return 'sea';
+  if (isIce(i, la, lo)) return 'ice';
+  if (elevM(i) > 3000) return 'high';
+  return 'land';
+}
+
+// Fastest route from any source cell to any target cell using the allowed modes (and 'plane'), with
+// day-averaged speeds like solveRoute. If there's no way through, returns how close it gets and what's in the way.
+// opts.airports: [[lat, lon, large], ...]; opts.near: [lat, lon, km] a circle holding every target (for A*).
+function planTrip(src, dst, allowed, opts = {}) {
+  const R = G.R, C = G.C, N = R * C;
+  const plane = allowed.includes('plane');
+  const modes = allowed.filter(m => MODES[m] && PLAN_MODES.includes(m) && MODES[m].terrain !== 'space');
+  const space = allowed.filter(m => MODES[m] && MODES[m].terrain === 'space');
+  const isDst = new Uint8Array(N); for (const t of dst) isDst[t] = 1;
+  // Airports grouped by cell; the biggest one in a cell represents it.
+  const port = new Map();
+  if (plane) for (const a of opts.airports || []) { const c = cellOf(a[0], a[1]), o = port.get(c); if (!o || (a[2] && !o.a[2])) port.set(c, { a, k: opts.airports.indexOf(a) }); }
+  const portCells = [...port.keys()];
+  const siteCells = SITES.map(x => cellOf(x[1], x[2])), siteOf = new Map(siteCells.map((c, k) => [c, k]));
+  const dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), pmode = new Int8Array(N).fill(-1);
+  const done = new Uint8Array(N), heap = makeHeap();
+  const midx = modes.map(m => MODE_KEYS.indexOf(m)), avgK = modes.map(m => hoursPerDay(m, 0) / 24);
+  // Cars, coaches and trains use bridges and tunnels, and boats use canals: they may hop one cell of the
+  // wrong surface. (The grid is 28 km, so a single cell is roughly the gap each mode allows.)
+  const hops = modes.map(m => MODES[m].gap >= 25 && MODES[m].terrain !== 'whale'), anyHop = hops.some(Boolean);
+  let vmax = 0;
+  for (const m of modes) vmax = Math.max(vmax, m === 'balloon' ? 40 : m === 'sail' ? 18 : m === 'flamingo' ? 2 : (m === 'camelride' ? 8 : MODES[m].speed + (MODES[m].downhill || 0)) * (1 + totalBoost(null, m) + maxTerrainBoost(m)) * hoursPerDay(m, 0) / 24);
+  if (plane) vmax = Math.max(vmax, PLANE.speed);
+  if (space.length) vmax = Infinity; // rockets make the straight-line bound useless; fall back to plain Dijkstra
+  const near = opts.near;
+  const heur = n => { if (!near || !isFinite(vmax) || !vmax) return 0; const [la, lo] = llOf(n); return Math.max(0, hav(la, lo, near[0], near[1]) - near[2] - 30) * 0.98 / vmax; };
+  for (const s of src) if (dist[s] !== 0) { dist[s] = 0; heap.push(heur(s), s); }
+  const DR = [-1, -1, -1, 0, 0, 1, 1, 1], DC = [-1, 0, 1, -1, 1, -1, 0, 1];
+  let goal = -1;
+  const relax = (u, v, h, mi) => { if (!done[v] && dist[u] + h < dist[v]) { dist[v] = dist[u] + h; prev[v] = u; pmode[v] = mi; heap.push(dist[v] + heur(v), v); } };
+  while (heap.size) {
+    const u = heap.pop();
+    if (done[u]) continue;
+    done[u] = 1;
+    if (isDst[u]) { goal = u; break; }
+    const ur = (u / C) | 0, uc = u - ur * C, ulat = cellLat(ur);
+    const ew = 27.8 * Math.cos(ulat * Math.PI / 180), hillU = isHill(u);
+    for (let k = 0; k < 8; k++) {
+      for (let step = 1; step <= (anyHop ? 2 : 1); step++) {
+        const vr = ur + DR[k] * step, vc = uc + DC[k] * step;
+        if (vr < 0 || vr >= R || vc < 0 || vc >= C) continue;
+        const v = vr * C + vc;
+        if (done[v]) continue;
+        const mid = step === 2 ? (ur + DR[k]) * C + uc + DC[k] : -1;
+        const dx = DC[k] * ew * step, dy = DR[k] * 27.8 * step, km = Math.hypot(dx, dy), east = dx / km;
+        const vlat = cellLat(vr), vlon = cellLon(vc), dE = (ELEV[v] - ELEV[u]) * 25;
+        let best = Infinity, bm = -1;
+        for (let q = 0; q < modes.length; q++) {
+          const m = modes[q];
+          if (step === 2 && (!hops[q] || !terrainProblem(m, mid, cellLat(ur + DR[k]), cellLon(uc + DC[k])))) continue; // hops only jump a wrong-surface cell
+          if (terrainProblem(m, v, vlat, vlon)) continue;
+          if (m === 'glide' && !hillU) continue;
+          if (MODES[m].downhill && dE >= 50) continue;
+          const frac = m === 'swim' ? hoursPerDay(m, vlat) / 24 : avgK[q];
+          // Changing mode costs that mode's setup time (an approximation: the search keeps one mode per cell).
+          const h = (km / speedAt(m, v, vlat, east, null, -dE / km) + climbHours(m, dE, v, km)) / frac + (midx[q] !== pmode[u] ? MODES[m].setup : 0);
+          if (h < best) { best = h; bm = midx[q]; }
+        }
+        if (bm >= 0) relax(u, v, best, bm);
+      }
+    }
+    if (plane && port.has(u)) {
+      const a = port.get(u).a;
+      for (const v of portCells) {
+        if (v === u || done[v]) continue;
+        const b = port.get(v).a, km = hav(a[0], a[1], b[0], b[1]);
+        if (canFly(a, b, km)) relax(u, v, flightHours(km), PLANE_IDX);
+      }
+    }
+    if (space.length && siteOf.has(u)) for (const m of space) {
+      const cost = MODES[m].setup + MODES[m].flight, mi = MODE_KEYS.indexOf(m);
+      for (const v of siteCells) if (v !== u) relax(u, v, cost, mi);
+    }
+  }
+  // Unreachable: the settled cell nearest the targets is how far you get.
+  let field = null, end = goal;
+  if (goal < 0) {
+    field = distanceField(dst);
+    let bd = Infinity;
+    for (let i = 0; i < N; i++) if (done[i] && (field[i] < bd - 1e-6 || (Math.abs(field[i] - bd) < 1e-6 && dist[i] < dist[end]))) { bd = field[i]; end = i; }
+  }
+  const cells = [];
+  for (let v = end; v !== -1; v = prev[v]) cells.push(v);
+  cells.reverse();
+  const runs = [];
+  for (let j = 1; j < cells.length; j++) {
+    const a = cells[j - 1], b = cells[j], mi = pmode[b], m = mi === PLANE_IDX ? 'plane' : MODE_KEYS[mi];
+    let A = llOf(a), B = llOf(b), extra = {};
+    if (m === 'plane') { const pa = port.get(a), pb = port.get(b); A = [pa.a[0], pa.a[1]]; B = [pb.a[0], pb.a[1]]; extra = { from: pa.k, to: pb.k }; }
+    const km = hav(A[0], A[1], B[0], B[1]), hours = dist[b] - dist[a], last = runs[runs.length - 1];
+    if (last && last.mode === m && m !== 'plane' && MODES[m].terrain !== 'space') { last.pts.push(B); last.km += km; last.hours += hours; }
+    else runs.push({ mode: m, pts: [A, B], km, hours, ...extra });
+  }
+  const out = { ok: goal >= 0, start: llOf(cells[0]), end: llOf(end), runs, hours: runs.reduce((s, r) => s + r.hours, 0), km: runs.reduce((s, r) => s + r.km, 0) };
+  if (goal < 0) {
+    // Follow the gap toward the targets: what surface blocks the way, and how wide is it?
+    out.leftKm = field[end];
+    let c = end, n = -1, kind = null, gapKm = 0;
+    for (let guard = 0; guard < 4000; guard++) {
+      const cr = (c / C) | 0, cc = c - cr * C, ew = 27.8 * Math.cos(cellLat(cr) * Math.PI / 180);
+      let bn = -1, bv = Infinity;
+      for (let k = 0; k < 8; k++) { // the next cell on the shortest line toward the targets
+        const vr = cr + DR[k], vc = cc + DC[k];
+        if (vr < 0 || vr >= R || vc < 0 || vc >= C) continue;
+        const v = vr * C + vc, f = field[v] + Math.hypot(DC[k] * ew, DR[k] * 27.8);
+        if (field[v] < field[c] && f < bv) { bv = f; bn = v; }
+      }
+      if (bn < 0) break;
+      if (n < 0) { n = bn; kind = surfaceOf(bn); }
+      else if (surfaceOf(bn) !== kind || isDst[bn]) break;
+      gapKm += hav(...llOf(c), ...llOf(bn)); c = bn;
+    }
+    if (n >= 0) {
+      const [la, lo] = llOf(n);
+      out.blocked = { ll: [la, lo], surface: kind, km: gapKm, fix: PLAN_MODES.filter(m => !allowed.includes(m) && !terrainProblem(m, n, la, lo) && !(m === 'glide') && MODES[m].terrain !== 'space') };
+    }
+  }
+  return out;
+}
+
 // Trips (start, end). Coordinates are approximate (to about 0.05°).
 const TRIPS = [
   ['Ely, Nevada', 39.25, -114.89, 'Hampi, India', 15.34, 76.46],
@@ -273,14 +520,14 @@ const TRIPS = [
 ];
 
 const RULES = {
-  classic:  { name: 'Classic', modes: ['walk', 'run', 'bike', 'skate', 'car', 'hitch', 'train', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'horse', 'camelride', 'elephant', 'balloon', 'tortoise', 'cannon', 'rocket', 'moon'], note: 'Everything except planes. Find the fastest mix.' },
-  human:    { name: 'Human power', modes: ['walk', 'run', 'bike', 'skate', 'kayak', 'swim', 'glide'], note: 'No engines. Oceans are your problem.' },
+  classic:  { name: 'Classic', modes: ['walk', 'run', 'bike', 'skate', 'car', 'moto', 'bus', 'hitch', 'train', 'ferry', 'cargo', 'sail', 'kayak', 'swim', 'glide', 'sled', 'skis', 'horse', 'camelride', 'elephant', 'ostrich', 'whale', 'balloon', 'tortoise', 'cannon', 'rocket', 'moon'], note: 'Everything except planes and the goofy stuff. Find the fastest mix.' },
+  human:    { name: 'Human power', modes: ['walk', 'run', 'bike', 'skate', 'skis', 'kayak', 'swim', 'glide', 'unicycle', 'pogo'], note: 'No engines. Oceans are your problem.' },
   tri:      { name: 'Triathlon', modes: ['run', 'bike', 'swim'], note: 'Run, bike and swim only, and each for at least 1 hour.', min: 1 },
-  nowheels: { name: 'No wheels', modes: ['walk', 'run', 'ferry', 'sail', 'kayak', 'swim', 'glide', 'sled', 'horse', 'camelride', 'elephant', 'balloon', 'tortoise'], note: 'Feet, hooves, boats, wings, dogs and balloons.' },
-  zoo:      { name: 'Zoo Bonanza', modes: ['walk', 'swim', 'horse', 'camelride', 'elephant', 'sled', 'tortoise'], note: 'Animals only: horses, camels, elephants, sled dogs and a giant tortoise. With danger on, every animal has a mind of its own.' },
+  nowheels: { name: 'No wheels', modes: ['walk', 'run', 'ferry', 'cargo', 'sail', 'kayak', 'swim', 'glide', 'sled', 'skis', 'horse', 'camelride', 'elephant', 'ostrich', 'whale', 'balloon', 'tortoise', 'pogo'], note: 'Feet, hooves, boats, wings, dogs, whales and balloons.' },
+  zoo:      { name: 'Zoo Bonanza', modes: ['walk', 'swim', 'horse', 'camelride', 'elephant', 'ostrich', 'whale', 'sled', 'tortoise'], note: 'Animals only: horses, camels, elephants, ostriches, whales, sled dogs and a giant tortoise. With danger on, every animal has a mind of its own.' },
   balloon:  { name: 'Balloonatic', modes: ['walk', 'balloon'], note: 'A hot air balloon and your own two feet. Winds blow east between 30° and 60° latitude, west elsewhere.' },
   rocket:   { name: 'Rocket Man', modes: ['walk', 'run', 'rocket', 'moon'], note: 'Rockets only fly between spaceports. You walk the rest.' },
-  silly:    { name: 'Silly season', modes: ['walk', 'tortoise', 'cannon', 'swim', 'glide', 'balloon'], note: 'Only the daft ways to travel. Bring snacks.' },
+  silly:    { name: 'Silly season', modes: ['walk', 'tortoise', 'cannon', 'trebuchet', 'pogo', 'unicycle', 'zorb', 'trolley', 'ostrich', 'whale', 'flamingo', 'swim', 'glide', 'balloon', 'jetpack', 'dig'], note: 'Only the daft ways to travel. Bring snacks.' },
 };
 
 
@@ -288,6 +535,7 @@ const RULES = {
 function fmtH(h) {
   if (!isFinite(h)) return '—';
   const m = Math.round(h * 60), d = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60;
+  if (d >= 365) { const y = d / 365; return y >= 10 ? `${Math.round(y).toLocaleString()} years` : `${y.toFixed(1)} years`; }
   if (d) return hh ? `${d}d ${hh}h` : `${d}d`;
   if (hh) return mm ? `${hh}h ${String(mm).padStart(2, '0')}m` : `${hh}h`;
   return `${mm}m`;
@@ -304,10 +552,14 @@ function nearestSite(la, lo) {
 }
 const PROBLEM_TEXT = {
   water: m => m === 'glide' ? 'Paragliders have to land on land. That leg ends up over open water.' :
-    `You can't ${{ car: 'drive', hitch: 'hitch a lift', train: 'take a train', bike: 'cycle', skate: 'skate', run: 'run', sled: 'sled', tortoise: 'ride a tortoise', cannon: 'fire yourself' }[m] || 'walk'} across that much water. Switch to a boat or swim.`,
-  land: m => m === 'swim' ? 'That swim crosses dry land. Get out and walk.' : m === 'kayak' ? 'Kayaks need water. Carry it a few km at most, then walk.' : 'Boats need water. That leg crosses land.',
-  snow: () => 'Dog sleds need snow: ice sheets, or land beyond 60° north or south.',
-  ice: m => `${MODES[m].name}s don't work on ice sheets. Walk it.`,
+    `You can't ${{ car: 'drive', moto: 'ride a motorbike', bus: 'take a coach', hitch: 'hitch a lift', train: 'take a train', bike: 'cycle', skate: 'skate', run: 'run', sled: 'sled', skis: 'ski', tortoise: 'ride a tortoise', cannon: 'fire yourself', trebuchet: 'be thrown', pogo: 'bounce', unicycle: 'unicycle', zorb: 'roll', trolley: 'push a trolley', ostrich: 'ride an ostrich' }[m] || 'walk'} across that much water. Switch to a boat or swim.`,
+  land: m => m === 'swim' ? 'That swim crosses dry land. Get out and walk.' : m === 'kayak' ? 'Kayaks need water. Carry it a few km at most, then walk.' :
+    m === 'whale' ? 'Whales stay in the sea. That leg crosses land.' : m === 'flamingo' ? 'Inflatable flamingos need water. That leg crosses land.' : 'Boats need water. That leg crosses land.',
+  snow: m => `${m === 'skis' ? 'Skis' : 'Dog sleds'} need snow: ice sheets, or land beyond 60° north or south.`,
+  ice: m => `The ${MODES[m].name.toLowerCase()} can't cross ice sheets. Walk it.`,
+  hilly: () => 'Pogo sticks need flat ground, and that leg crosses hills. Go round them.',
+  whale: () => 'Whales only swim their migration routes. Turn on 🐋 Whale lanes in the map layers to see them.',
+  uphill: m => `The ${MODES[m].name.toLowerCase()} only goes downhill, and that leg climbs. Walk the uphill bits.`,
   peak: m => `Your ${m === 'glide' ? 'paraglider' : 'balloon'} crashed into the mountains. Go around peaks over 4,500 m.`,
   high: m => `${MODES[m].name}s can't manage ground above ${MODES[m].maxElev.toLocaleString()} m. Go around, or walk it.`,
 };
@@ -326,7 +578,7 @@ function evalLeg(mode, a, b, boost) {
     return leg;
   }
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])) / 0.05));
-  let along = 0, gapRun = 0, maxE = 0, cold = false, ice = false, lake = false, launch = false, prevCell = cellOf(a[0], a[1]), lat = 0;
+  let along = 0, gapRun = 0, maxE = 0, cold = false, ice = false, lake = false, launch = false, prevCell = cellOf(a[0], a[1]), lat = 0, drop = 0, bumpy = 0;
   const bio = { desert: 0, grass: 0, jungle: 0, ice: 0 };
   for (let k = 0; k < n; k++) {
     const t0 = k / n, t1 = (k + 1) / n;
@@ -342,7 +594,12 @@ function evalLeg(mode, a, b, boost) {
       else if (!leg.error) leg.error = PROBLEM_TEXT[prob](mode);
     } else gapRun = 0;
     const east = (lo1 - lo0) * 111.32 * Math.cos(mla * Math.PI / 180) / km;
-    leg.moving += km / speedAt(mode, i, mla, east, boost) + climbHours(mode, elevM(i) - elevM(prevCell), i, km);
+    if (M.downhill && i !== prevCell) { // the slope between grid cells, used until the next cell
+      const dE = elevM(i) - elevM(prevCell); drop = -dE / 27.8;
+      if (dE >= 50 && !edge && !leg.error) leg.error = PROBLEM_TEXT.uphill(mode);
+    }
+    if (M.wobbly && isLand(i) && roughM(i) > M.wobbly) bumpy += km;
+    leg.moving += km / speedAt(mode, i, mla, east, boost, drop) + climbHours(mode, elevM(i) - elevM(prevCell), i, km);
     if (isLand(i)) maxE = Math.max(maxE, elevM(i));
     if (mode === 'swim' && Math.abs(mla) > 50 && !CH.noCold && !CH.swimHours) cold = true;
     if (isIce(i, mla, mlo)) ice = true;
@@ -353,9 +610,18 @@ function evalLeg(mode, a, b, boost) {
     prevCell = i;
   }
   leg.maxE = maxE; leg.cold = cold; leg.ice = ice; leg.lake = lake; leg.bio = bio; leg.lat = leg.km ? lat / leg.km : 0;
+  if (bumpy) leg.bumpy = bumpy;
   if (mode === 'glide' && !leg.error) {
     if (!launch) leg.error = 'Paragliders launch from hills. Start this leg somewhere hilly (300 m above the land around).';
     else if (leg.km > M.maxKm) leg.error = `A paraglider flies about ${M.maxKm} km in a day. Land, then launch again from a hill.`;
+  }
+  if (M.fromSite && !leg.error) {
+    if (nearestSite(a[0], a[1]).km > 60) leg.error = 'Jetpacks only refuel at spaceports (the 🚀 pins). Start this leg at one.';
+    else if (leg.km > M.maxKm) leg.error = `A jetpack holds 15 minutes of fuel: ${M.maxKm} km at most.`;
+  }
+  if (M.ports && PORTS.length && !leg.error) {
+    if (nearestPort(a[0], a[1]).km > 30) leg.error = 'Cargo ships only load at ports. Start this leg at a ⚓ port (zoom in to see more of them).';
+    else if (nearestPort(b[0], b[1]).km > 30 && !(leg.km < 1)) leg.error = 'Cargo ships only unload at ports. End this leg at a ⚓ port (zoom in to see more of them).';
   }
   return leg;
 }
@@ -364,7 +630,7 @@ function evalLeg(mode, a, b, boost) {
 // cross (bridges, canals) are kept unless the leg would end more than 15 km onto them. Returns null if the leg can't start.
 function clipLeg(mode, a, b, finish) {
   const M = MODES[mode];
-  if (M.terrain === 'space' || M.terrain === 'any') return { ll: b, clipped: false };
+  if (M.terrain === 'space' || (M.terrain === 'any' && !M.maxKm)) return { ll: b, clipped: false };
   const km0 = hav(a[0], a[1], b[0], b[1]), n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])) / 0.01));
   const at = t => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   let along = 0, run = 0, runStart = -1, tail = 0, tailStart = -1, cut = -1, why = null;
@@ -411,6 +677,15 @@ function finalizeLegs(legs, seed) {
     if (l.mode === 'fly' && l.km > 2000) l.events.push('Popped up to the edge of space');
     if (l.mode === 'carpet') l.events.push('A whole new world');
     if (l.mode === 'cannon') l.events.push(`Fired from the cannon ${Math.max(1, Math.round(l.km / 0.3)).toLocaleString()} times`);
+    if (l.mode === 'trebuchet') { const n = Math.max(1, Math.ceil(l.km)).toLocaleString(); l.events.push(`Built ${n} trebuchets and got flung ${n} times`); }
+    if (l.mode === 'unicycle' && l.bumpy) { const n = Math.ceil(l.bumpy / 10); l.extra += n; l.events.push(`Fell off ${n} time${n > 1 ? 's' : ''} on bumpy ground: +${n}h`); }
+    if (l.mode === 'trolley' && (k === legs.length - 1 || legs[k + 1].mode !== 'trolley')) { l.extra += 0.5; l.events.push('🛒 Crashed at the bottom: +30m'); }
+    if (l.mode === 'zorb') l.events.push('Rolling downhill: steeper is faster');
+    if (l.mode === 'flamingo') l.events.push('Drifting with the ocean currents');
+    if (l.mode === 'whale') l.events.push('Hitched a ride on a migrating whale');
+    if (l.mode === 'ostrich') l.events.push('Ostriches sprint for an hour a day, then sulk');
+    if (l.mode === 'dig') l.events.push('Tunnelling with a spoon at 1 m a day');
+    if (M.chilly && l.lat > 55) l.events.push('Icy roads and numb fingers: slower in the cold');
     if (l.lake && (l.mode === 'swim' || l.mode === 'kayak')) l.events.push('Across a lake');
     if (l.mode === 'hitch') l.events.push(l.setup ? `${fmtH(l.setup)} waiting for a lift` : 'Got a lift straight away');
     else if (l.setup) l.events.push(`${fmtH(l.setup)} to ${SETUP_TEXT[l.mode] || 'get ready'}`);
@@ -420,7 +695,9 @@ function finalizeLegs(legs, seed) {
 }
 
 const SETUP_TEXT = { bike: 'rent a bike', car: 'hire a car', train: 'catch the train', ferry: 'board the boat', sail: 'rig the sails',
-  kayak: 'rent a kayak', glide: 'lay out the wing', sled: 'harness the dogs', balloon: 'inflate the balloon', cannon: 'load the cannon' };
+  kayak: 'rent a kayak', glide: 'lay out the wing', sled: 'harness the dogs', balloon: 'inflate the balloon', cannon: 'load the cannon',
+  skis: 'wax the skis', moto: 'rent a motorbike', bus: 'wait at the bus station', cargo: 'load the containers', ostrich: 'catch an ostrich',
+  whale: 'find a friendly whale', flamingo: 'blow up the flamingo', zorb: 'inflate the zorb', jetpack: 'refuel the jetpack' };
 // Hitchhiking luck: a wait of 0 to 6 hours in 15-minute steps. Same trip and leg number, same wait, for everyone.
 function luckWait(seed, k) {
   let a = (Math.imul(seed >>> 0, 2654435761) + Math.imul(k + 1, 40503)) >>> 0;
@@ -482,12 +759,27 @@ const HAZARDS = {
   camelride:[{ lv: 1, p: 0.2, h: [2, 8], t: '🐫 The camel refused to move' }],
   elephant: [{ lv: 1, p: 0.15, h: [2, 6], t: '🐘 The elephant stopped for a bath' }, { lv: 4, p: 0.02, h: [24, 48], hurt: 40, dead: 0.2, t: '🐘 Stampede' }],
   web:      [{ lv: 3, p: 0.03, h: [6, 6], hurt: 20, t: '🕸️ A web line snapped' }],
+  moto:     [{ lv: 1, p: 0.1, h: [1, 3], t: '⛽ Ran out of fuel' }, { lv: 2, p: 0.05, h: [24, 48], hurt: 45, dead: 0.3, t: '💥 Motorbike crash' }],
+  bus:      [{ lv: 1, p: 0.2, h: [2, 6], t: '🚌 Breakdown: waited for a new coach' }, { lv: 3, p: 0.01, h: [24, 48], hurt: 30, t: '🚨 Coach crash' }],
+  cargo:    [{ lv: 1, p: 0.02, wind: true, h: [12, 24], t: '🌊 Storm: held in port' }, { lv: 2, p: 0.15, leg: true, h: [12, 36], t: '📦 Stuck in customs' }, { lv: 4, p: 0.01, h: [24, 72], hurt: 20, t: '🏴‍☠️ Pirates! Paid them off' }],
+  skis:     [{ lv: 3, p: 0.04, h: [12, 12], hurt: 20, t: '🎿 Lost a ski in a snowdrift' }],
+  ostrich:  [{ lv: 1, p: 0.3, h: [1, 4], t: '🐦 The ostrich sat down and refused to move' }, { lv: 3, p: 0.05, h: [12, 12], hurt: 30, t: '🦶 Kicked by the ostrich' }],
+  whale:    [{ lv: 1, p: 0.1, h: [1, 3], t: '🐋 The whale dived: waited for it to come up' }, { lv: 3, p: 0.03, h: [6, 12], hurt: 30, dead: 0.2, t: '🐋 It breached and threw you off' }],
+  pogo:     [{ lv: 2, p: 0.3, h: [1, 1], hurt: 10, t: '🤸 Bounced into a hedge' }],
+  unicycle: [{ lv: 3, p: 0.05, h: [6, 6], hurt: 20, t: '🤕 Faceplant' }],
+  trebuchet:[{ lv: 2, p: 0.3, leg: true, h: [2, 2], hurt: 15, t: '🎯 Overshot into a pond' }],
+  flamingo: [{ lv: 1, p: 0.1, h: [2, 4], t: '🦩 Slow leak: stopped to patch it' }, { lv: 3, p: 0.05, h: [6, 6], hurt: 30, dead: 0.3, t: '🦈 A shark popped the flamingo' }],
+  zorb:     [{ lv: 3, p: 0.1, h: [2, 2], t: '🫧 Rolled into a lake' }],
+  trolley:  [{ lv: 2, p: 0.2, h: [1, 1], t: '🛒 A wheel came off' }],
+  jetpack:  [{ lv: 2, p: 0.2, leg: true, h: [2, 2], hurt: 20, t: '🎒 Sputtered and dropped you in a field' }, { lv: 4, p: 0.05, leg: true, h: [0, 0], dead: 1, t: '🔥 The jetpack exploded' }],
+  dig:      [{ lv: 4, p: 0.01, h: [24, 24], t: '🥄 Bent the spoon' }],
 };
 // On foot or on an animal, from Hard: wild places have their own dangers, unless your character is at home there.
 const FOOT = m => MODES[m].human || MODES[m].mount;
 const WILD = [{ b: 'jungle', lv: 3, p: 0.15, h: [12, 12], t: '🌴 Lost in the jungle' }];
 // Energy: % used per moving hour. Other modes (trains, boats, lifts) are a sit-down, so you recover a little.
-const DRAIN = { walk: 3, run: 8, bike: 4, skate: 8, kayak: 6, swim: 8, glide: 5, sled: 4, cannon: 6, car: 1, web: 5, horse: 2, camelride: 1.5, elephant: 1.5 };
+const DRAIN = { walk: 3, run: 8, bike: 4, skate: 8, kayak: 6, swim: 8, glide: 5, sled: 4, cannon: 6, car: 1, web: 5, horse: 2, camelride: 1.5, elephant: 1.5,
+  moto: 1.5, skis: 5, ostrich: 2, whale: 1, pogo: 12, unicycle: 6, trebuchet: 1, zorb: 3, trolley: 1, jetpack: 2, dig: 4 };
 const RECOVER = 2.5, RIDE = 1.5;
 const DEAD_H = 999999; // the time a 1v1 records for a traveller who didn't make it
 
@@ -591,7 +883,7 @@ function dailyTrip(nowMs) {
 
 // ---------- progress: earned speed-ups and badges ----------
 // Doing an activity makes you better at it: +1% speed per this many km in total, up to +15%.
-const STAT_KM = { walk: 333, run: 300, bike: 1000, skate: 300, kayak: 150, swim: 33, glide: 500 };
+const STAT_KM = { walk: 333, run: 300, bike: 1000, skate: 300, kayak: 150, swim: 33, glide: 500, skis: 300 };
 const STAT_CAP = 15;
 function emptyProgress() { return { v: 1, km: {}, badges: {}, done: [] }; }
 function boostPct(m, km) { return STAT_KM[m] ? Math.min(STAT_CAP, Math.floor((km || 0) / STAT_KM[m])) : 0; }
@@ -609,6 +901,9 @@ const BADGES = [
   { id: 'tortoise', icon: '🐢', name: 'Slow and Steady', how: 'Ride a giant tortoise', test: (L) => L.some(l => l.mode === 'tortoise') },
   { id: 'cannon', icon: '💥', name: 'Human Cannonball', how: 'Get fired from a cannon', test: (L) => L.some(l => l.mode === 'cannon') },
   { id: 'moon', icon: '🌕', name: 'Moonwalker', how: 'Take the scenic route round the Moon', test: (L) => L.some(l => l.mode === 'moon') },
+  { id: 'boing', icon: '🤸', name: 'Boing', how: 'Pogo 100 km in one trip', test: (L) => L.reduce((s, l) => s + (l.mode === 'pogo' && !l.error ? l.km : 0), 0) >= 100 },
+  { id: 'whale', icon: '🐋', name: 'Whale Rider', how: 'Ride a whale', test: (L) => L.some(l => l.mode === 'whale' && !l.error) },
+  { id: 'spoon', icon: '🥄', name: 'Patience', how: 'Dig any distance with a spoon', test: (L) => L.some(l => l.mode === 'dig' && !l.error) },
   { id: 'slow', icon: '🐌', name: 'Slowest Ever', how: 'Finish a trip that takes over a year', test: (L, c) => c.total > 365 * 24 },
   { id: 'nowheels', icon: '🦶', name: 'Wheel-free', how: 'Finish a No wheels trip', test: (L, c) => c.rules === 'nowheels' },
   { id: 'aplus', icon: '🏆', name: 'Beat the Computer', how: 'Score an A+', test: (L, c) => c.grade === 'A+' },
@@ -725,4 +1020,4 @@ function decodeChallenge(code) {
   } catch { return null; }
 }
 
-if (typeof module !== 'undefined') module.exports = { G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, BIOMES, biomeOf, terrainBoost, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf, CHARS, setCharacter, totalBoost, allowedModes, clipLeg, gapOf, encodeRoute, decodeRoute, mergeResults, encodeChallenge, decodeChallenge, DANGER, dangerOf, cleanCustom, HAZARDS, hazardsFor, riskOf, drainOf, applyDanger, chance, DEAD_H };
+if (typeof module !== 'undefined') module.exports = { setPorts, nearestPort, PORTS: () => PORTS, WHALE_LANES, whaleLane, G, setGrid, cellOf, cellLat, cellLon, elevM, maxM, roughM, isLand, isLake, isHill, isIce, BIOMES, biomeOf, terrainBoost, hav, MODES, MODE_KEYS, SITES, terrainProblem, windDir, speedAt, hoursPerDay, climbHours, solveRoute, TRIPS, RULES, fmtH, fmtKm, fmtLL, nearestSite, evalLeg, restFor, finalizeLegs, luckWait, grade, dailyTrip, STAT_KM, STAT_CAP, emptyProgress, boostPct, boostsFrom, BADGES, recordTrip, encodeProgress, decodeProgress, mergeProgress, simplifyPath, linesOf, CHARS, setCharacter, totalBoost, allowedModes, clipLeg, gapOf, encodeRoute, decodeRoute, mergeResults, encodeChallenge, decodeChallenge, DANGER, dangerOf, PLANE, PLAN_MODES, planTrip, distanceField, flightHours, canFly, cleanCustom, HAZARDS, hazardsFor, riskOf, drainOf, applyDanger, chance, DEAD_H };

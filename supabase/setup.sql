@@ -1,4 +1,4 @@
--- Vamos online: accounts, ranked daily trips and 1v1 matches.
+-- Vamos online: accounts, ranked daily trips, 1v1 matches and chat.
 -- Paste all of this into Supabase → SQL Editor → New query, then press Run. Running it twice is safe.
 -- Security model: anyone may read (leaderboards and the lobby are public); people may only write their own rows,
 -- and match updates go through the functions at the bottom, which check whose turn it is.
@@ -141,3 +141,44 @@ grant execute on function public.match_routes(bigint) to anon, authenticated;
 
 revoke execute on function public.accept_match(bigint), public.submit_match(bigint, real, text, text), public.cancel_match(bigint) from public, anon;
 grant execute on function public.accept_match(bigint), public.submit_match(bigint, real, text, text), public.cancel_match(bigint) to authenticated;
+
+-- ---------- chat: a room per trip plus one room for everyone ----------
+create table if not exists public.chat (
+  id bigint generated always as identity primary key,
+  room text not null check (room ~ '^[a-z0-9:.,>_-]{1,60}$'),
+  user_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  body text not null check (char_length(btrim(body)) between 1 and 280),
+  created_at timestamptz not null default now()
+);
+create index if not exists chat_room_id on public.chat (room, id desc);
+create index if not exists chat_user_time on public.chat (user_id, created_at desc);
+create index if not exists chat_time on public.chat (created_at);
+alter table public.chat enable row level security;
+drop policy if exists "chat is public" on public.chat;
+create policy "chat is public" on public.chat for select using (true);
+drop policy if exists "post own chat" on public.chat;
+create policy "post own chat" on public.chat for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists "delete own chat" on public.chat;
+create policy "delete own chat" on public.chat for delete to authenticated using (user_id = auth.uid());
+-- Players pick only the room and the text; who sent it and when are filled in by the database.
+revoke insert, update, delete on public.chat from anon, authenticated;
+grant select on public.chat to anon, authenticated;
+grant insert (room, body) on public.chat to authenticated;
+grant delete on public.chat to authenticated;
+
+-- Slows spam down: one message every 3 seconds and at most 20 a minute per player.
+-- Now and then it also clears out messages older than 30 days.
+create or replace function public.chat_guard() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if exists (select 1 from public.chat where user_id = new.user_id and created_at > now() - interval '3 seconds') then
+    raise exception 'Slow down: one message every 3 seconds';
+  end if;
+  if (select count(*) from public.chat where user_id = new.user_id and created_at > now() - interval '1 minute') >= 20 then
+    raise exception 'Slow down: too many messages this minute';
+  end if;
+  if random() < 0.02 then delete from public.chat where created_at < now() - interval '30 days'; end if;
+  return new;
+end $$;
+drop trigger if exists chat_guard on public.chat;
+create trigger chat_guard before insert on public.chat for each row execute function public.chat_guard();

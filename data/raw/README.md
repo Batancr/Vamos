@@ -13,6 +13,8 @@
 | Balloon sites | Typed in by hand in `tools/build_places.py` | — (coordinates approximate, recalled) | `docs/data/places.json` |
 | Biomes (desert, grassland, jungle, ice) | Natural Earth 1:10m geography region polygons (`ne_10m_geography_regions_polys.geojson`) from https://github.com/nvkelso/natural-earth-vector, plus hand-typed boxes in `tools/build_biome.py` | Public domain (Natural Earth). **To verify.** Boxes are approximate. | The fifth layer of `docs/data/grid.bin` |
 | Streets (loaded live) | OpenStreetMap standard tiles `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | © OpenStreetMap contributors, ODbL; tile usage policy applies | Streets layer |
+| Countries and cities (Route Planner) | Natural Earth 1:50m admin-0 countries and populated places from https://github.com/nvkelso/natural-earth-vector | Public domain (Natural Earth). **To verify.** | `docs/data/countries.bin`, `docs/data/planner.json` (built by `tools/build_planner.py`) |
+| Airports (Route Planner) | OurAirports `airports.csv`, GitHub mirror https://github.com/davidmegginson/ourairports-data (downloaded 10 Oct 2026) | Described as public domain on ourairports.com/data. **To verify**: I couldn't open that page from here. | `docs/data/planner.json` |
 
 Lakes skipped on purpose (`DRY` in `tools/build_data.py`): Australian salt pans that are dry most of the time (Lake Eyre North and South, Frome, Gairdner, Torrens, Mackay, Disappointment, Barlee).
 

@@ -2,7 +2,7 @@
 // ---------- state ----------
 const $ = id => document.getElementById(id);
 const cv = $('map'), ctx = cv.getContext('2d');
-const S = { danger: 'off', dcustom: null, run: null, plan: null, trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, char: 'none', show: { ports: true, hills: true, balloons: true, desert: false, grass: false, jungle: false, ice: false }, markers: [], view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
+const S = { tab: 'game', danger: 'off', dcustom: null, run: null, plan: null, trip: null, tripNo: 1, seed: 1, fair: true, rules: 'classic', mode: 'car', pts: [], legs: [], lines: [], sel: null, nextLine: 1, tool: 'tap', stroke: null, challenge: null, finished: false, ghosts: true, picking: null, char: 'none', charsOn: false, show: { ports: true, hills: true, balloons: true, whales: true, desert: false, grass: false, jungle: false, ice: false }, markers: [], view: { lon: 0, lat: 20, ppd: 4 }, best: null, playing: false, showBest: false, anim: null, progress: null };
 let baseImg, W = 0, H = 0, DPR = 1;
 
 // ---------- progress (stats and badges), kept in this browser only ----------
@@ -180,7 +180,7 @@ function drawStops() {
     ctx.font = '14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#000'; ctx.fillText(icon, x, y + 1); ctx.textBaseline = 'alphabetic';
   };
   if (S.show.balloons && allowed.includes('balloon')) for (const b of PLACES.balloons) put([b[1], b[2]], '🎈', `${b[0]} (balloon site)`);
-  if (S.show.ports && ['ferry', 'sail', 'kayak'].some(m => allowed.includes(m))) {
+  if (S.show.ports && ['ferry', 'cargo', 'sail', 'kayak'].some(m => allowed.includes(m))) {
     const rank = v.ppd < 8 ? 4 : v.ppd < 20 ? 6 : 10; // only big ports when zoomed out
     for (const p of PLACES.ports) if (p[3] <= rank) put([p[1], p[2]], '⚓', `${p[0]} (port)`);
   }
@@ -202,6 +202,8 @@ function stopAt(x, y) { let b = null, bd = 16 * 16; for (const m of S.markers) {
 
 // ---------- characters ----------
 function renderChars() {
+  $('charsOn').checked = S.charsOn; $('chars').hidden = !S.charsOn;
+  if (!S.charsOn) { $('charPower').textContent = 'Characters are off: you travel as a plain traveller with no special powers.'; return; }
   $('chars').innerHTML = Object.entries(CHARS).map(([k, c]) => `<button class="char" data-c="${k}" aria-pressed="${k === S.char}" title="${esc(c.power)}"><span>${c.icon}</span>${esc(c.name)}</button>`).join('');
   $('charPower').textContent = `${CHARS[S.char].icon} ${CHARS[S.char].power}`;
   $('chars').querySelectorAll('.char').forEach(b => b.onclick = () => {
@@ -209,6 +211,13 @@ function renderChars() {
     renderChars(); routeChanged();
   });
 }
+// Switching characters off keeps your pick for when you switch them back on.
+$('charsOn').onchange = () => {
+  S.charsOn = $('charsOn').checked; try { localStorage.setItem('vamos.charsOn', S.charsOn ? '1' : '0'); } catch {}
+  let pick = 'none'; try { pick = CHARS[localStorage.getItem('vamos.char')] ? localStorage.getItem('vamos.char') : 'none'; } catch {}
+  S.char = S.charsOn ? pick : 'none'; setCharacter(S.char); renderChars(); routeChanged(); renderTraveller();
+  if (window.Online) Online.progressChanged();
+};
 
 // ---------- view / projection (equirectangular) ----------
 function toXY(la, lo) { const v = S.view; return [W / 2 + (lo - v.lon) * v.ppd, H / 2 - (la - v.lat) * v.ppd]; }
@@ -267,11 +276,23 @@ function draw() {
   ctx.strokeStyle = 'rgba(28,42,51,.35)'; ctx.lineWidth = 0.8; ctx.setLineDash([]); ctx.beginPath();
   for (const l of BORDERS) { let X = 0, Y = 0; for (let k = 0; k < l.length; k += 2) { X += l[k]; Y += l[k + 1]; const [x, y] = toXY(Y / 20, X / 20); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } }
   ctx.stroke();
+  if (S.tab === 'plan') { Planner.draw(); drawLookSpot(); return; } // the Route Planner draws its own route and pins
   // spaceports
   const rules = RULES[S.rules];
-  if (rules.modes.includes('rocket')) {
-    ctx.font = `${S.mode === 'rocket' || S.mode === 'moon' ? 20 : 14}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (rules.modes.some(m => m === 'rocket' || m === 'jetpack')) {
+    ctx.font = `${S.mode === 'rocket' || S.mode === 'moon' || S.mode === 'jetpack' ? 20 : 14}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const s of SITES) { const [x, y] = toXY(s[1], s[2]); ctx.fillText('🚀', x, y); }
+    ctx.textBaseline = 'alphabetic';
+  }
+  // whale lanes
+  if (S.show.whales && !S.playing && allowedModes(S.rules).includes('whale')) {
+    ctx.font = '15px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const lane of WHALE_LANES) {
+      pathLine(lane, 'rgba(43,108,176,.45)', [10, 8], 3);
+      const mid = lane[Math.floor(lane.length / 2)], [x, y] = toXY(...mid);
+      ctx.fillStyle = 'rgba(251,248,241,.92)'; ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fill(); ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = '#000'; ctx.fillText('🐋', x, y + 1);
+    }
     ctx.textBaseline = 'alphabetic';
   }
   // best route
@@ -305,6 +326,9 @@ function draw() {
   pin(S.trip.a[0], S.trip.a[1], S.trip.from.split(',')[0], '#2f7a45');
   pin(S.trip.b[0], S.trip.b[1], S.trip.to.split(',')[0], '#c8402f');
   if (S.anim) drawTraveller(S.anim);
+  drawLookSpot();
+}
+function drawLookSpot() {
   if (!$('lookMenu').hidden) { // the spot "Look around" will open
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(W / 2, H / 2, 11, 0, 7); ctx.stroke();
     ctx.strokeStyle = '#c8402f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(W / 2, H / 2, 11, 0, 7); ctx.moveTo(W / 2 - 17, H / 2); ctx.lineTo(W / 2 + 17, H / 2); ctx.moveTo(W / 2, H / 2 - 17); ctx.lineTo(W / 2, H / 2 + 17); ctx.stroke();
@@ -326,7 +350,7 @@ function drawTraveller(A) {
   const swim = A.mode === 'swim';
   if (swim) ctx.rotate(-1.35);
   // vehicle bubble behind the figure
-  if (!human || A.mode === 'bike' || A.mode === 'skate' || A.mode === 'kayak') { ctx.font = '26px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(M.icon, 0, 10); }
+  if (!human || ['bike', 'skate', 'kayak', 'skis', 'pogo', 'unicycle'].includes(A.mode)) { ctx.font = '26px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(M.icon, 0, 10); }
   if (S.char !== 'none') { // characters ride along as their emoji instead of the stick figure
     ctx.font = '24px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(CHARS[S.char].icon, Math.sin(swing) * 2, -16);
@@ -352,7 +376,9 @@ function renderModes() {
   $('modes').innerHTML = allowed.filter(m => MODES[m]).map(m => {
     const M = MODES[m], up = Math.round(totalBoost(b, m) * 100);
     const sp = M.terrain === 'space' ? `${M.setup}h prep` : m === 'balloon' ? 'wind-powered' : m === 'sail' ? '4–18 km/h · wind' :
-      m === 'cannon' ? '300 m a shot · 2h reload' : m === 'camelride' ? `${num(4 * (1 + totalBoost(b, m)))} km/h, 8 in deserts` : `${num(M.speed * (1 + totalBoost(b, m)))} km/h · ${hoursPerDay(m, 0)}h/day`;
+      m === 'cannon' ? '300 m a shot · 2h reload' : m === 'trebuchet' ? '1 km a throw · 24h to build' : m === 'flamingo' ? 'drifts · 2 km/h with the current' :
+      M.downhill ? `downhill only · up to ${M.speed + M.downhill} km/h` : m === 'jetpack' ? '100 km/h · 25 km per refill' : m === 'dig' ? '1 m a day' : m === 'whale' ? '6 km/h · whale lanes only' :
+      m === 'cargo' ? '35 km/h · ports only' : m === 'camelride' ? `${num(4 * (1 + totalBoost(b, m)))} km/h, 8 in deserts` : `${num(M.speed * (1 + totalBoost(b, m)))} km/h · ${hoursPerDay(m, 0)}h/day`;
     return `<button class="mode" aria-pressed="${m === S.mode}" data-m="${m}"><span class="ic">${M.icon}</span>${M.name}<span class="sp">${sp}${up ? ` <b class="up">+${up}%</b>` : ''}</span><span class="sw" style="background:${M.color}"></span></button>`;
   }).join('');
   $('modes').querySelectorAll('.mode').forEach(b => b.onclick = () => {
@@ -449,6 +475,7 @@ function addLine(lls, freehand) {
   let prev = S.pts[S.pts.length - 1].ll, msg = '';
   for (let ll of lls) {
     const end = M.terrain !== 'space' && snapEnd(ll); if (end) ll = S.trip.b;
+    if (M.ports && !end && !freehand) { const p = nearestPort(ll[0], ll[1]); if (p.km < 60) ll = [p.port[1], p.port[2]]; } // cargo ships dock at the nearest port
     if (M.terrain !== 'space' && !freehand) { // auto-stop: go as far as this mode can, then stop at the edge
       const c = clipLeg(m, prev, ll, end);
       if (!c) { msg = evalLeg(m, prev, ll).error || `${M.name} can't go that way from here.`; break; }
@@ -464,7 +491,7 @@ const STOP_TEXT = {
   land: m => `${MODES[m].name} stopped at the coast. Pick a way to travel on land to carry on.`,
   water: m => `${MODES[m].name} stopped at the water's edge. Switch to a boat or swim to cross.`,
   edge: m => MODES[m].terrain === 'water' ? `${MODES[m].name} stopped at the coast. Pick a way to travel on land to carry on.` : `${MODES[m].name} stopped at the water's edge. Switch to a boat or swim to cross.`,
-  limit: () => 'Paragliders fly about 150 km a day, so you landed there. Walk to another 🪂 hill to launch again.',
+  limit: m => m === 'jetpack' ? 'Out of fuel after 25 km, so you landed there. Jetpacks only refuel at 🚀 spaceports.' : 'Paragliders fly about 150 km a day, so you landed there. Walk to another 🪂 hill to launch again.',
 };
 const addPoint = ll => addLine([ll]);
 // Screen distance from (x, y) to the nearest line, for tapping a line to select it.
@@ -574,6 +601,8 @@ function showResult(best) {
   }
   const share = `Vamos ${S.challenge ? '⚔️ challenge' : S.tripNo ? '#' + S.tripNo : '(practice)'} · ${rules.name} · ${S.fair ? 'Fair mode' : 'Stats on'}${D.lv ? ` · Danger: ${S.danger === 'custom' ? 'Custom' : DANGER[S.danger].name}` : ''}\n${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]}\n${S.char !== 'none' ? CHARS[S.char].icon + ' ' : ''}${icons.join('')} ${dead ? '💀 DNF' : fmtH(you)}${run && run.incidents.length ? ` · ${run.incidents.map(i => i.t.split(' ')[0]).join('')}` : ''}\nBest route ${par ? fmtH(par) : '—'} · Grade ${g}`;
   const bestLine = best ? best.runs.filter(r => r.km >= 5 || MODES[r.mode].terrain === 'space').map(r => `${MODES[r.mode].icon} ${fmtKm(r.km)}`).join(' → ') : 'No route exists under these rules.';
+  // Not a way to travel: just for fun. Pigeon speed is a rough guess (about 60 km/h, flying 12 hours a day).
+  const pkm = hav(...S.trip.a, ...S.trip.b), pigeon = pkm / 60 + restFor(pkm / 60, 12);
   const note = g === 'A+' ? 'You beat the computer. Its route assumes full rest days, so short hops can sneak under it.' : '';
   $('result').innerHTML = `<div class="result">
     <div class="grade"><div class="g${g.length > 2 ? ' small' : ''}">${g}</div><div class="cmp">
@@ -587,6 +616,7 @@ function showResult(best) {
     ${earned ? `<ul class="events earned">${earned}</ul>` : ''}
     <div id="onlineResult"></div>
     <div class="label">Best route (dotted on the map)</div><p class="hint">${bestLine}</p>
+    <p class="hint">🕊️ A carrier pigeon would have got your postcard there in ${fmtH(pigeon)}.</p>
     <div class="label">Share</div><pre class="share" id="shareText">${esc(share)}</pre>
     <div class="label">Challenge friends</div>
     <div class="row"><input id="myName" class="txt" maxlength="40" placeholder="Your name" aria-label="Your name" value="${esc(myName())}"><button class="btn" id="sendCh">${S.challenge ? 'Send to more friends' : 'Challenge a friend'}</button></div>
@@ -689,7 +719,7 @@ $('restore').onclick = () => {
 
 // ---------- input ----------
 const ptrs = new Map(); let drag = null, pinch = null;
-const canDraw = () => S.tool === 'draw' && !S.playing && !atEnd() && S.sel == null && !S.picking;
+const canDraw = () => S.tab === 'game' && S.tool === 'draw' && !S.playing && !atEnd() && S.sel == null && !S.picking;
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
   if (ptrs.size === 1) {
@@ -729,7 +759,8 @@ function endPtr(e) {
     if (drag && drag.moved && e.type === 'pointerup') { addLine(simplifyPath(st, 6).slice(1).filter((p, k, a) => k === a.length - 1 || Math.hypot(p[0] - a[k + 1][0], p[1] - a[k + 1][1]) > 8).map(p => toLL(...p)), true); }
     else draw();
   }
-  if (tap && S.picking) pickPlace(toLL(e.offsetX, e.offsetY));
+  if (tap && S.tab === 'plan') Planner.tap(toLL(e.offsetX, e.offsetY));
+  else if (tap && S.picking) pickPlace(toLL(e.offsetX, e.offsetY));
   else if (tap) {
     const st = stopAt(e.offsetX, e.offsetY), hit = st ? null : lineAt(e.offsetX, e.offsetY);
     if (st && S.sel == null) { addPoint(st.ll); ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!ptrs.size) drag = null; return; }
@@ -744,7 +775,7 @@ cv.addEventListener('pointerleave', () => { $('hover').hidden = true; });
 cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.offsetX, e.offsetY); }, { passive: false });
 $('zin').onclick = () => zoomAt(1.5, W / 2, H / 2);
 $('zout').onclick = () => zoomAt(1 / 1.5, W / 2, H / 2);
-$('zfit').onclick = fitTrip;
+$('zfit').onclick = () => S.tab === 'plan' ? Planner.fit() : fitTrip();
 $('sat').onclick = () => { const open = $('layerMenu').hidden; $('layerMenu').hidden = !open; $('lookMenu').hidden = true; $('sat').setAttribute('aria-expanded', open); draw(); };
 $('layerMenu').querySelectorAll('input[name=layer]').forEach(r => r.onchange = () => {
   layer = r.value; try { localStorage.setItem('vamos.layer', layer); } catch {}
@@ -794,7 +825,7 @@ async function loadAssets() {
     baseSrc = 'data/basemap.webp';
   }
   GRIDBUF = await gunzipIfNeeded(bytes);
-  setGrid(GRIDBUF);
+  setGrid(GRIDBUF); setPorts(PLACES.ports);
   baseImg = new Image(); baseImg.onload = draw; baseImg.src = baseSrc;
 }
 (async () => {
@@ -805,10 +836,11 @@ async function loadAssets() {
   try { const sh = JSON.parse(localStorage.getItem('vamos.show') || '{}'); for (const k in S.show) if (typeof sh[k] === 'boolean') S.show[k] = sh[k]; } catch {}
   $('layerMenu').querySelectorAll('input[data-show]').forEach(b => b.checked = S.show[b.dataset.show]);
   S.progress = loadProgress();
-  try { S.char = CHARS[localStorage.getItem('vamos.char')] ? localStorage.getItem('vamos.char') : 'none'; } catch {}
+  try { S.charsOn = localStorage.getItem('vamos.charsOn') === '1'; S.char = S.charsOn && CHARS[localStorage.getItem('vamos.char')] ? localStorage.getItem('vamos.char') : 'none'; } catch {}
   setCharacter(S.char); renderChars();
   renderModes();
   resize();
   const d = dailyTrip(Date.now());
   if (!(location.hash.startsWith('#c=') && openChallenge(location.hash.slice(3)))) setTrip(d.idx, d.no);
+  if (S.tab === 'plan') Planner.fit();
 })();

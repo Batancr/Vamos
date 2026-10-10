@@ -1,4 +1,4 @@
-// Vamos online: accounts, ranked daily trips and the 1v1 lobby, stored in Supabase (supabase.com).
+// Vamos online: accounts, ranked daily trips, the 1v1 lobby and chat, stored in Supabase (supabase.com).
 // The project URL and publishable key are meant to be public: the database rules in supabase/setup.sql
 // decide what each player may read and write. Never put the secret (service_role) key in this file.
 const ONLINE_CONFIG = window.VAMOS_ONLINE || { url: 'https://xpkdeclztdqyjbviyvdd.supabase.co', key: 'sb_publishable_zoN6GFoHsF-3vd4upAkEYA_KDyF_L9x' };
@@ -7,6 +7,8 @@ const MATCH_COLS = 'id,host,invited,guest,trip,status,host_hours,host_char,guest
 // Characters that fly straight there make ranked trips trivial, so they're casual only.
 const NOT_RANKED = ['genie', 'thunder', 'caped'];
 const RUDE = /fuck|shit|cunt|nigg|fag|bitch|slut|whore|rape|nazi|hitler|dick|cock|puss|porn|sex|penis|vagin|anal|wank|twat/i;
+// Chat hides the worst words. Whole words only, so places like Essex and the Panama Canal stay readable.
+const RUDE_WORDS = /\b(fuck\w*|shit\w*|cunt\w*|nigg\w*|fag|fags|faggot\w*|bitch\w*|slut\w*|whore\w*|rape|raped|rapist|nazi\w*|dick|dicks|cock|cocks|pussy|porn\w*|penis|vagina|wank\w*|twat\w*)\b/gi;
 const O = { sb: null, user: null, me: null, ranked: true, tab: 'rank', board: 'all', names: new Map(), stats: null, poll: 0, todo: 0, today: null };
 try { O.ranked = localStorage.getItem('vamos.ranked') !== '0'; } catch {}
 
@@ -78,13 +80,13 @@ function renderAccount(msg) {
   if (msg || !O.sb) { el.innerHTML = `<span class="hint">${esc(msg || 'Connecting…')}</span>`; return; }
   if (!O.user) {
     el.innerHTML = `<span>👤 <b>Sign in</b> to save progress, play ranked and join 1v1s.</span>
-      <div class="row"><button class="btn small" id="oSignIn">Sign in</button><button class="btn small" id="oRank">🏆 Rankings</button><button class="btn small" id="oLobby">⚔️ 1v1 lobby</button></div>`;
+      <div class="row"><button class="btn small" id="oSignIn">Sign in</button><button class="btn small" id="oRank">🏆 Rankings</button><button class="btn small" id="oLobby">⚔️ 1v1 lobby</button><button class="btn small" id="oChat">💬 Chat</button></div>`;
   } else {
     const st = O.stats;
     el.innerHTML = `<span>👤 <b>${esc(O.me ? O.me.username : '…')}</b>${st ? ` · ${st.points.toLocaleString()} pts${st.rank ? ` · #${st.rank}` : ''}` : ''}</span>
       <div class="row">
         <div class="seg" role="group" aria-label="Play mode"><button class="btn small" id="oCasual" aria-pressed="${!O.ranked}">Casual</button><button class="btn small" id="oRanked" aria-pressed="${O.ranked}">Ranked</button></div>
-        <button class="btn small" id="oRank">🏆</button><button class="btn small" id="oLobby">⚔️ 1v1${O.todo ? ` <i class="dot">${O.todo}</i>` : ''}</button><button class="btn small" id="oMe">👤</button>
+        <button class="btn small" id="oRank">🏆</button><button class="btn small" id="oLobby">⚔️ 1v1${O.todo ? ` <i class="dot">${O.todo}</i>` : ''}</button><button class="btn small" id="oChat" aria-label="Chat">💬${C.unread ? ' <i class="dot">new</i>' : ''}</button><button class="btn small" id="oMe">👤</button>
       </div>
       <span class="hint" id="oRankNote"></span>`;
     $('oCasual').onclick = () => setRanked(false); $('oRanked').onclick = () => setRanked(true);
@@ -92,6 +94,8 @@ function renderAccount(msg) {
   }
   if ($('oSignIn')) $('oSignIn').onclick = () => openOnline('me');
   $('oRank').onclick = () => openOnline('rank'); $('oLobby').onclick = () => openOnline('lobby');
+  $('oChat').onclick = () => $('chat').hidden ? openChat() : closeChat();
+  if (!$('chat').hidden) renderChat();
   onlineTripChanged();
 }
 function setRanked(on) { O.ranked = on; try { localStorage.setItem('vamos.ranked', on ? '1' : '0'); } catch {} renderAccount(); }
@@ -111,7 +115,10 @@ function rankedState() {
   if (NOT_RANKED.includes(S.char)) return { ok: false, why: `${CHARS[S.char].name} is too fast for ranked. Pick another character.` };
   return { ok: true, why: '🏆 Ranked: your first finish today scores up to 1,000 points.' };
 }
-function onlineTripChanged() { const n = $('oRankNote'); if (n) n.textContent = rankedState().why || (S.match ? '⚔️ 1v1 match in progress.' : ''); }
+function onlineTripChanged() {
+  const n = $('oRankNote'); if (n) n.textContent = rankedState().why || (S.match ? '⚔️ 1v1 match in progress.' : '');
+  if (!$('chat').hidden && C.room !== 'all' && C.key !== chatRoom()) openChat(); // the trip changed: move to its room
+}
 function onlineBeforeGo() { S.rankedTry = rankedState().ok; }
 const hrs = h => h >= DEAD_H ? '💀 DNF' : fmtH(h);
 const pointsFor = (you, best) => Math.min(1000, Math.round(1000 * best / you));
@@ -209,6 +216,10 @@ async function checkInbox() {
   O.inboxReady = true;
   O.todo = ms.filter(m => (m.status === 'open' && m.invited === O.me.id) || myTurn(m)).length + fresh.length;
   O.mine = ms; renderAccount();
+  if ($('chat').hidden && S.trip) { // a dot on 💬 when someone has written in this trip's room since you last looked
+    const { data: last } = await O.sb.from('chat').select('id,user_id').eq('room', chatRoom()).order('id', { ascending: false }).limit(1);
+    const top = last && last[0]; if (top && top.user_id !== O.me.id && top.id > seenChat(chatRoom())) { C.unread = true; renderAccount(); }
+  }
 }
 const myTurn = m => O.me && ((m.host === O.me.id && m.host_hours == null && m.status !== 'done') || (m.guest === O.me.id && m.guest_hours == null && m.status === 'playing'));
 
@@ -362,6 +373,92 @@ async function renderLobby(body) {
     try { localStorage.setItem('vamos.seen', JSON.stringify([...new Set([...seen, ...ids])].slice(-200))); } catch {}
   }
 }
+// ---------- chat: a room for everyone on the same trip and rules, and one room for everyone ----------
+// Messages are fetched every 5 seconds while the chat is open, and not at all while it's closed.
+const C = { room: 'trip', key: '', last: 0, msgs: [], poll: 0, unread: false, muted: [] };
+try { C.muted = JSON.parse(localStorage.getItem('vamos.muted') || '[]'); } catch {}
+const chatRoom = () => !S.trip ? 'all' : `t:${S.trip.a.map(x => x.toFixed(1))}>${S.trip.b.map(x => x.toFixed(1))}:${S.rules}`;
+const seenChat = room => { try { return +(JSON.parse(localStorage.getItem('vamos.chatSeen') || '{}')[room] || 0); } catch { return 0; } };
+function markChatSeen() {
+  if (!C.last) return;
+  try { const o = JSON.parse(localStorage.getItem('vamos.chatSeen') || '{}'); o[C.key] = C.last; const ks = Object.keys(o); if (ks.length > 50) delete o[ks[0]]; localStorage.setItem('vamos.chatSeen', JSON.stringify(o)); } catch {}
+}
+const cleanChat = t => String(t).replace(RUDE_WORDS, w => w[0] + '*'.repeat(w.length - 1));
+// Your current plan in one line: each line on the map as its icon and distance.
+function planText() {
+  if (!S.lines.length) return '';
+  const parts = S.lines.map(L => `${MODES[L.mode].icon} ${MODES[L.mode].terrain === 'space' ? MODES[L.mode].name : fmtKm(L.km)}`);
+  const total = S.legs.reduce((s, l) => s + (l.total || 0), 0), bad = S.legs.some(l => l.error);
+  let t = `🗺️ My plan: ${parts.join(' → ')}`;
+  if (t.length > 230) t = t.slice(0, 229) + '…';
+  return `${t} · ${bad ? 'not finished yet' : fmtH(total)}${atEnd() ? '' : ' so far'}`;
+}
+// No plan sharing on today's daily trip: ranked scores come from it, and routes stay hidden until tomorrow.
+const plansBlocked = () => !S.challenge && !S.match && S.tripNo === dailyTrip(Date.now()).no;
+function openChat() {
+  if (!onlineOn() || !O.sb) { toast('Chat needs the online database, which isn\'t reachable right now'); return; }
+  const key = C.room === 'all' ? 'all' : chatRoom();
+  if (key !== C.key) { C.key = key; C.last = 0; C.msgs = []; }
+  $('chat').hidden = false; C.unread = false; renderAccount(); renderChat(); pollChat();
+  clearInterval(C.poll); C.poll = setInterval(pollChat, 5000);
+}
+function closeChat() { $('chat').hidden = true; clearInterval(C.poll); markChatSeen(); }
+async function pollChat() {
+  if ($('chat').hidden || !O.sb) return;
+  const key = C.key;
+  let q = O.sb.from('chat').select('id,user_id,body,created_at').eq('room', key);
+  q = C.last ? q.gt('id', C.last).order('id').limit(50) : q.order('id', { ascending: false }).limit(50);
+  const { data, error } = await q;
+  if (key !== C.key) return; // switched rooms while loading
+  if (error) { $('chatNote').textContent = 'Chat isn\'t reachable right now.'; return; }
+  const rows = C.last ? data || [] : (data || []).reverse();
+  if (!rows.length && C.msgs.length) return;
+  await nameIds(rows);
+  C.msgs = [...C.msgs, ...rows].slice(-100); if (rows.length) C.last = rows[rows.length - 1].id;
+  markChatSeen(); renderChatList();
+}
+function renderChat() {
+  const trip = `${S.trip.from.split(',')[0]} → ${S.trip.to.split(',')[0]} · ${RULES[S.rules].name}`;
+  $('chat').querySelectorAll('[data-room]').forEach(b => b.setAttribute('aria-pressed', b.dataset.room === C.room));
+  $('chatWhere').textContent = C.room === 'all' ? 'Everyone playing Vamos' : `Everyone on ${trip}`;
+  const can = !!O.me;
+  $('chatForm').hidden = !can; $('chatPlan').hidden = !can || C.room === 'all';
+  $('chatPlan').disabled = plansBlocked();
+  $('chatNote').textContent = !can ? 'Sign in to chat. Anyone can read along.' : plansBlocked() && C.room !== 'all' ? 'Plans can\'t be shared on today\'s trip, so nobody copies a ranked route.' : '';
+  renderChatList();
+}
+function renderChatList() {
+  const el = $('chatMsgs'), atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+  const time = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const shown = C.msgs.filter(m => !C.muted.includes(m.user_id));
+  el.innerHTML = shown.length ? shown.map(m => {
+    const mine = O.me && m.user_id === O.me.id, name = O.names.get(m.user_id) || '?';
+    return `<li class="${mine ? 'me' : ''}${m.body.startsWith('🗺️') ? ' plan' : ''}"><b>${esc(name)}</b> <span>${esc(cleanChat(m.body))}</span> <small>${time(m.created_at)}</small>
+      ${mine ? `<button class="linkish" data-del="${m.id}" aria-label="Delete your message">✕</button>` : O.me ? `<button class="linkish" data-mute="${esc(m.user_id)}" title="Hide messages from ${esc(name)}" aria-label="Mute ${esc(name)}">🔇</button>` : ''}</li>`;
+  }).join('') : '<li class="empty">No messages yet. Say hi, or share how you plan to get there.</li>';
+  if (atBottom || !el.dataset.ready) el.scrollTop = el.scrollHeight; el.dataset.ready = 1;
+  el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const { error } = await O.sb.from('chat').delete().eq('id', +b.dataset.del);
+    if (!error) { C.msgs = C.msgs.filter(m => m.id !== +b.dataset.del); renderChatList(); }
+  });
+  el.querySelectorAll('[data-mute]').forEach(b => b.onclick = () => {
+    C.muted = [...C.muted, b.dataset.mute].slice(-200); try { localStorage.setItem('vamos.muted', JSON.stringify(C.muted)); } catch {}
+    toast(`Muted ${O.names.get(b.dataset.mute) || 'that player'}. Their messages are hidden on this device.`, 3000); renderChatList();
+  });
+}
+async function sendChat(text) {
+  text = text.trim().slice(0, 280); if (!text || !O.me) return false;
+  const { data, error } = await O.sb.from('chat').insert({ room: C.key, body: text }).select('id,user_id,body,created_at').single();
+  if (error) { toast(/slow down/i.test(error.message) ? error.message.replace(/^.*?(Slow down[^.]*).*$/s, '$1') : 'Message not sent. Try again.', 2600); return false; }
+  if (data && data.id > C.last) { C.msgs = [...C.msgs, data].slice(-100); C.last = data.id; markChatSeen(); }
+  const el = $('chatMsgs'); el.dataset.ready = ''; renderChatList();
+  return true;
+}
+$('chat').querySelectorAll('[data-room]').forEach(b => b.onclick = () => { C.room = b.dataset.room; openChat(); });
+$('chatClose').onclick = closeChat;
+$('chatForm').onsubmit = async ev => { ev.preventDefault(); const i = $('chatText'); if (await sendChat(i.value)) i.value = ''; };
+$('chatPlan').onclick = () => { const t = planText(); if (!t) { toast('Draw some of your route first, then share it'); return; } sendChat(t); };
+
 $('online').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { O.tab = b.dataset.tab; renderOnline(); });
 $('onlineClose').onclick = closeOnline;
 $('online').addEventListener('close', () => { clearInterval(O.lobbyPoll); checkInbox(); });

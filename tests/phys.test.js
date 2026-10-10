@@ -394,4 +394,135 @@ test('Zoo Bonanza: a camel ride goes 8 km/h in the Sahara and 4 elsewhere; horse
   assert.ok(V.RULES.zoo.modes.every(m => V.MODES[m]));
 });
 
+// ---------- modes from the travel-ideas backlog ----------
+V.setPorts(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'places.json'))).ports);
+const leg1 = (m, a, b) => V.finalizeLegs([V.evalLeg(m, a, b)], 1)[0];
+test('new modes are appended after the elephant, so old challenge links keep their modes', () => {
+  assert.strictEqual(V.MODE_KEYS.indexOf('elephant'), 24);
+  assert.deepStrictEqual(V.MODE_KEYS.slice(25), ['skis', 'moto', 'bus', 'cargo', 'ostrich', 'whale', 'pogo', 'unicycle', 'trebuchet', 'flamingo', 'zorb', 'trolley', 'jetpack', 'dig']);
+  for (const r in V.RULES) assert.ok(V.RULES[r].modes.every(m => V.MODES[m]), r);
+});
+test('skis need snow, like dog sleds', () => {
+  assert.ok(/^Skis need snow/.test(V.evalLeg('skis', [48, 2], [48, 3]).error));
+  assert.strictEqual(V.evalLeg('skis', [72, -40], [72, -35]).error, null);
+});
+test('motorbikes slow to 60% north of 55°', () => {
+  // flat cells, no roughness: 70 km/h, and 70 × 0.6 = 42 km/h in the cold
+  const flat = V.cellOf(52, 5); assert.strictEqual(V.roughM(flat), 0);
+  near(V.speedAt('moto', flat, 52, 0), 70, 1e-9);
+  near(V.speedAt('moto', flat, 56, 0), 42, 1e-9);
+});
+test('cargo ships load and unload at ports only', () => {
+  assert.ok(/only load at ports/.test(V.evalLeg('cargo', [45, -40], [40, -30]).error));
+  const p = V.nearestPort(51.9, 4.1); assert.ok(p.km < 30, p.port[0]);
+  assert.ok(/only unload at ports/.test(V.evalLeg('cargo', [p.port[1], p.port[2]], [53, 3]).error));
+  // a 12h load, and no seasickness on a ship this big
+  const l = leg1('cargo', [p.port[1], p.port[2]], [V.nearestPort(53.55, 9.97).port[1], V.nearestPort(53.55, 9.97).port[2]]);
+  assert.ok(!l.seasick); assert.ok(l.events.includes('12h to load the containers'));
+});
+test('pogo sticks need flat ground', () => {
+  assert.ok(/flat ground/.test(V.evalLeg('pogo', [47, 8], [46.5, 9]).error)); // the Alps
+  assert.strictEqual(V.terrainProblem('pogo', V.cellOf(52, 5), 52, 5), null); // the Netherlands
+});
+test('unicycles fall off once per 10 km of bumpy ground, an hour each', () => {
+  const l = leg1('unicycle', [47, 8], [46.5, 9.5]);
+  assert.ok(l.bumpy > 0); const n = Math.ceil(l.bumpy / 10);
+  assert.ok(l.events.includes(`Fell off ${n} times on bumpy ground: +${n}h`));
+});
+test('a trebuchet throws you 1 km a day', () => {
+  // 1 km at 1/24 km/h is 24h of moving; it never rests (24h a day)
+  const l = leg1('trebuchet', [48, 2], [48, 2 + 1 / (111.195 * Math.cos(48 * Math.PI / 180))]);
+  near(l.km, 1, 0.01); near(l.moving, 24, 0.3);
+});
+test('the flamingo drifts with the current: 2 km/h with it, 0.2 against it', () => {
+  // 45°N currents run east (like the westerlies)
+  assert.strictEqual(V.speedAt('flamingo', V.cellOf(45, -40), 45, 1), 2);
+  assert.strictEqual(V.speedAt('flamingo', V.cellOf(45, -40), 45, -1), 0.2);
+  assert.strictEqual(V.speedAt('flamingo', V.cellOf(10, -40), 10, -1), 2); // the tropics run west
+});
+test('whales only swim their migration lanes', () => {
+  assert.strictEqual(V.evalLeg('whale', [50, -145], [40, -152]).error, null); // Alaska to Hawaii lane
+  assert.ok(/migration routes/.test(V.evalLeg('whale', [30, -40], [30, -35]).error)); // middle of the Atlantic
+});
+test('zorbs and trolleys only go downhill, faster on steep slopes', () => {
+  assert.strictEqual(V.evalLeg('zorb', [46.5, 8], [47.5, 8]).error, null);       // down out of the Alps
+  assert.ok(/only goes downhill/.test(V.evalLeg('zorb', [47.5, 8], [46.5, 8]).error)); // back up
+  const i = V.cellOf(52, 5);
+  assert.strictEqual(V.speedAt('zorb', i, 52, 0, null, 0), 3);     // flat: 3 km/h
+  assert.strictEqual(V.speedAt('zorb', i, 52, 0, null, 10), 18);   // 10 m per km: 3 + 10 × 1.5
+  assert.strictEqual(V.speedAt('zorb', i, 52, 0, null, 100), 43);  // capped at 3 + 40
+  assert.ok(leg1('trolley', [46.5, 8], [47.5, 8]).events.includes('🛒 Crashed at the bottom: +30m'));
+});
+test('jetpacks start at a spaceport and fly 25 km at most', () => {
+  assert.strictEqual(V.evalLeg('jetpack', [28.5, -80.6], [28.6, -80.8]).error, null);
+  assert.ok(/25 km at most/.test(V.evalLeg('jetpack', [28.5, -80.6], [29.5, -81]).error));
+  assert.ok(/refuel at spaceports/.test(V.evalLeg('jetpack', [40, -100], [40, -99.9]).error));
+});
+test('digging with a spoon: 1 m a day, shown in years', () => {
+  // 100 km = 100,000 m = 100,000 days = 274 years
+  assert.strictEqual(V.fmtH(V.finalizeLegs([V.evalLeg('dig', [0, 10], [0, 10 + 100 / 111.195])], 1)[0].total), '274 years');
+  assert.strictEqual(V.fmtH(400 * 24), '1.1 years');
+});
+test('the best-route computer never uses jetpacks or spoons, and the Silly season solve still works', () => {
+  const r = V.solveRoute([46.5, 8], [52, 5], V.RULES.silly.modes, {});
+  assert.ok(r && r.runs.every(x => x.mode !== 'jetpack' && x.mode !== 'dig'));
+});
+test('new badges: Boing at 100 km of pogo, Whale Rider, Patience', () => {
+  const B = id => V.BADGES.find(b => b.id === id).test;
+  assert.ok(B('boing')([{ mode: 'pogo', km: 60 }, { mode: 'walk', km: 5 }, { mode: 'pogo', km: 40 }], {}));
+  assert.ok(!B('boing')([{ mode: 'pogo', km: 99 }], {}));
+  assert.ok(B('whale')([{ mode: 'whale', km: 1 }], {}) && B('spoon')([{ mode: 'dig', km: 0.001 }], {}));
+});
+
+// ---------- route planner ----------
+const PL = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'planner.json')));
+const CGRID = zlib.gunzipSync(fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'countries.bin')));
+const countryCells = name => { const k = PL.countries.findIndex(c => c[0] === name) + 1, out = []; for (let i = 0; i < CGRID.length; i++) if (CGRID[i] === k) out.push(i); return out; };
+const AIR = PL.airports.map(a => [a[3], a[4], a[5]]);
+test('planner data: country names are there and the country grid matches the game grid', () => {
+  assert.strictEqual(CGRID.length, V.G.R * V.G.C);
+  assert.ok(PL.countries.length > 200 && PL.countries.every(c => typeof c[0] === 'string' && c[0]));
+  assert.ok(countryCells('Denmark').length > 50 && countryCells('Canada').length > 10000);
+});
+test('a flight: 3 h at the airports + 30 min taxi + km at 800 km/h', () => {
+  near(V.flightHours(1600), 3 + 0.5 + 2, 1e-9); // 1600 / 800 = 2 h in the air
+  assert.ok(V.canFly([0, 0, 1], [0, 0, 1], 15000) && !V.canFly([0, 0, 1], [0, 0, 0], 2600));
+});
+test('planner: walking from Canada to Denmark gets stuck at the sea and suggests a boat or a swim', () => {
+  const r = V.planTrip(countryCells('Canada'), countryCells('Denmark'), ['walk'], { airports: AIR });
+  assert.strictEqual(r.ok, false);
+  assert.ok(r.leftKm > 500, 'still a long way off');
+  assert.ok(['sea', 'lake'].includes(r.blocked.surface), r.blocked.surface);
+  assert.ok(r.blocked.fix.includes('ferry') && r.blocked.fix.includes('swim'));
+  assert.ok(r.runs.every(x => x.mode === 'walk'));
+});
+test('planner: adding a boat to walking reaches Denmark from Canada', () => {
+  const r = V.planTrip(countryCells('Canada'), countryCells('Denmark'), ['walk', 'ferry'], { airports: AIR });
+  assert.ok(r.ok && r.runs.some(x => x.mode === 'ferry'));
+});
+test('planner: Toronto to Copenhagen with a plane flies YYZ to CPH', () => {
+  const r = V.planTrip([V.cellOf(43.70, -79.42)], [V.cellOf(55.68, 12.56)], ['walk', 'car', 'plane'], { airports: AIR });
+  const f = r.runs.filter(x => x.mode === 'plane');
+  assert.ok(r.ok && f.length === 1);
+  assert.strictEqual(PL.airports[f[0].from][0] + '-' + PL.airports[f[0].to][0], 'YYZ-CPH');
+  // about 6,270 km: 3.5 h at airports and taxiing + 7.8 h flying, plus a short drive to the airport
+  near(r.hours, 12, 1.5);
+});
+test('planner: a plane alone cannot leave a place with no airport, and says what could', () => {
+  const r = V.planTrip([V.cellOf(-25, 133)], [V.cellOf(-33.9, 151.2)], ['plane'], { airports: AIR }); // middle of Australia
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.runs.length, 0);
+  assert.ok(r.blocked && r.blocked.fix.includes('walk'));
+});
+test('planner and game agree on a simple drive (Paris to Berlin by car)', () => {
+  const r = V.planTrip([V.cellOf(48.87, 2.33)], [V.cellOf(52.52, 13.40)], ['car']);
+  const g = V.solveRoute([48.87, 2.33], [52.52, 13.40], ['car'], {});
+  near(r.hours, g.hours, 0.6);
+});
+test('planner: cars cross short bridges, so Paris to Copenhagen is about a day, not a drive round the Baltic', () => {
+  const r = V.planTrip([V.cellOf(48.87, 2.33)], [V.cellOf(55.68, 12.56)], ['car']);
+  assert.ok(r.ok && r.hours < 40, `got ${r.hours}`);
+});
+
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

@@ -8,3 +8,6 @@ data/raw/fine.npy
 data/raw/ne_50m_lakes.geojson
 data/raw/ne_10m_ports.geojson
 data/raw/ne_10m_geography_regions_polys.geojson
+data/raw/ne_50m_admin_0_countries.geojson
+data/raw/ne_50m_populated_places.geojson
+data/raw/airports.csv

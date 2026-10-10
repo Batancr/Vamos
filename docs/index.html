@@ -44,6 +44,9 @@ body { margin: 0; -webkit-text-size-adjust: 100%; background: var(--sea); color:
 .look a { color: var(--ink); font-weight: 700; }
 .look label { display: flex; gap: 8px; align-items: center; }
 .look input { accent-color: var(--stamp); }
+.lrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.onoff { font: 12.5px var(--body); text-transform: none; letter-spacing: 0; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.chars[hidden] { display: none; }
 .chars { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; margin-top: 6px; }
 .char { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border: 2px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font: 12.5px var(--body); color: var(--ink); text-align: center; }
 .char span { font-size: 22px; line-height: 1; }
@@ -152,6 +155,19 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
 .ranked small { color: var(--muted); }
 .pname { margin: 0; font-family: var(--display); font-weight: 400; font-size: 20px; }
 .badgeline { font-size: 22px; margin: 0; line-height: 1.5; }
+.chat { position: absolute; left: 12px; bottom: 12px; width: min(340px, calc(100% - 24px)); max-height: min(420px, calc(100% - 90px)); display: flex; flex-direction: column; gap: 6px; background: var(--ticket); border: 3px solid var(--ink); border-radius: 12px; padding: 8px; box-shadow: 4px 4px 0 rgba(28,42,51,.25); z-index: 5; }
+.chead { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.chat .where, .chat .crow small { color: var(--muted); font-size: 12px; }
+.cmsgs { list-style: none; margin: 0; padding: 0 2px; overflow-y: auto; flex: 1; min-height: 60px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; overflow-wrap: anywhere; }
+.cmsgs li { line-height: 1.35; }
+.cmsgs li.me b { color: var(--stamp); }
+.cmsgs li.plan span { background: rgba(233,185,73,.3); border-radius: 4px; padding: 0 3px; }
+.cmsgs li small { color: var(--muted); font-size: 11px; }
+.cmsgs li.empty { color: var(--muted); }
+.cmsgs .linkish { text-decoration: none; font-size: 11px; opacity: .6; }
+.cform { display: flex; gap: 6px; }
+.cform .txt { flex: 1; min-width: 0; }
+.crow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .slide { display: grid; grid-template-columns: 110px 1fr 46px; gap: 8px; align-items: center; font-size: 13.5px; margin-top: 6px; }
 .slide input { accent-color: var(--stamp); width: 100%; }
 .slide b { font: 500 12px var(--mono); text-align: right; }
@@ -164,6 +180,23 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
 .incidents { margin: 0; padding-left: 18px; font-size: 13.5px; }
 .foot { font-size: 11.5px; color: var(--muted); margin-top: auto; }
 .foot a { color: var(--muted); }
+.tabs { position: absolute; top: 54px; left: 16px; display: inline-flex; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--ticket); box-shadow: 3px 3px 0 rgba(28,42,51,.2); z-index: 4; }
+.tabs button { font: 700 14px var(--body); border: 0; background: transparent; color: var(--ink); padding: 7px 12px; cursor: pointer; }
+.tabs button + button { border-left: 2px solid var(--ink); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--ticket); }
+.pane { display: contents; }
+body.planning #tripNo, body.planning #tool, body.planning #chat, body.planning #clock { display: none !important; }
+.plan-head h2 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0 0 4px; }
+.ends { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+.ends .lab { grid-column: 1 / 3; margin-top: 2px; }
+.ends .btn { padding: 7px 10px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+#planModes { display: flex; flex-direction: column; gap: 6px; }
+#planModes .modes { margin-bottom: 4px; }
+.more summary { cursor: pointer; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.more[open] summary { margin-bottom: 6px; }
+.result.bad { border-color: var(--stamp); }
+.result .row .btn { margin: 0; }
 @media (max-width: 760px) {
   .app { flex-direction: column; }
   .stage { flex: none; height: 58%; min-height: 300px; }
@@ -178,6 +211,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
   <div class="stage">
     <canvas id="map" aria-label="World map. Click to add stops to your route."></canvas>
     <div class="brand"><h1>Vamos</h1><span id="tripNo">Trip #1</span></div>
+    <div class="tabs" role="tablist" aria-label="Vamos sections"><button role="tab" id="tabGame" aria-selected="true" aria-controls="gamePanel">🎮 Game</button><button role="tab" id="tabPlan" aria-selected="false" aria-controls="planPanel">🧭 Route Planner</button></div>
     <div class="zoom">
       <button id="zin" title="Zoom in" aria-label="Zoom in">+</button>
       <button id="zout" title="Zoom out" aria-label="Zoom out">−</button>
@@ -196,6 +230,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
         <label><input type="checkbox" data-show="ports"> ⚓ Ports</label>
         <label><input type="checkbox" data-show="hills"> 🪂 Hills</label>
         <label><input type="checkbox" data-show="balloons"> 🎈 Balloons</label>
+        <label><input type="checkbox" data-show="whales"> 🐋 Whale lanes</label>
       </div>
       <b style="margin-top:4px">Shade terrain</b>
       <div class="toggles" id="terrainToggles">
@@ -216,9 +251,17 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
     <div class="hover" id="hover" hidden></div>
     <div class="toast" id="toast" hidden></div>
     <div class="clock" id="clock" hidden></div>
+    <section class="chat" id="chat" hidden aria-label="Chat">
+      <div class="chead"><div class="seg" role="group" aria-label="Chat room"><button class="btn small" data-room="trip">This trip</button><button class="btn small" data-room="all">Everyone</button></div><button class="btn small" id="chatClose" aria-label="Close chat">✕</button></div>
+      <small class="where" id="chatWhere"></small>
+      <ol class="cmsgs" id="chatMsgs" aria-live="polite"></ol>
+      <form class="cform" id="chatForm"><input class="txt" id="chatText" maxlength="280" placeholder="Say something…" aria-label="Message" autocomplete="off"><button class="btn small" type="submit">Send</button></form>
+      <div class="crow"><button class="btn small" id="chatPlan" type="button">🗺️ Share my plan</button><small id="chatNote"></small></div>
+    </section>
   </div>
 
   <aside class="panel">
+   <div class="pane" id="gamePanel" role="tabpanel" aria-labelledby="tabGame">
     <div class="acct" id="account"></div>
     <div class="trip">
       <div class="place"><b id="fromName">…</b><small id="fromLL"></small></div>
@@ -253,7 +296,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
     </div>
 
     <div>
-      <div class="label">Character</div>
+      <div class="label lrow">Character <label class="onoff"><input type="checkbox" id="charsOn"> Characters on</label></div>
       <div class="chars" id="chars"></div>
       <p class="hint" id="charPower" style="margin-top:6px"></p>
     </div>
@@ -292,7 +335,37 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
       <div class="row" style="margin-top:6px"><button class="btn" id="backup">Make backup code</button><button class="btn" id="restore">Restore</button></div>
       <p class="hint" id="codeMsg" style="margin-top:4px" aria-live="polite"></p>
     </details>
-    <p class="foot">Planes are banned. Terrain from <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (Mapzen; SRTM, GMTED, ETOPO1 and others). Borders from Natural Earth via world-atlas; lakes from Natural Earth. Streets from © OpenStreetMap contributors. Port locations from Natural Earth. Characters are original, inspired by well-known stories. Satellite imagery from EOxCloudless by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0. Speeds and rules are a simplified game model, not real travel advice.</p>
+   </div>
+   <div class="pane" id="planPanel" role="tabpanel" aria-labelledby="tabPlan" hidden>
+    <div class="plan-head">
+      <h2>Route Planner</h2>
+      <p class="hint">Not a game: see what's possible. Pick a start and a finish, choose how you're allowed to travel, and see the fastest way, or how far you get and what stops you.</p>
+    </div>
+    <div class="ends">
+      <label class="label lab" for="planFrom">Start</label>
+      <input class="txt" id="planFrom" list="planList" placeholder="A city or a country" autocomplete="off">
+      <button class="btn" id="planFromPin" title="Tap the map to set the start" aria-label="Tap the map to set the start">📍</button>
+      <label class="label lab" for="planTo">Finish</label>
+      <input class="txt" id="planTo" list="planList" placeholder="A city or a country" autocomplete="off">
+      <button class="btn" id="planToPin" title="Tap the map to set the finish" aria-label="Tap the map to set the finish">📍</button>
+    </div>
+    <datalist id="planList"></datalist>
+    <div class="row"><button class="btn small" id="planSwap">⇅ Swap</button><span class="hint">A country means anywhere in it.</span></div>
+    <div>
+      <div class="label">How you may travel</div>
+      <div class="presets" style="margin-top:6px">
+        <button class="btn small" data-preset="walk">🚶 Walking only</button>
+        <button class="btn small" data-preset="everyday">No planes</button>
+        <button class="btn small" data-preset="planes">✈️ With planes</button>
+        <button class="btn small" data-preset="none">Clear</button>
+      </div>
+      <div id="planModes" style="margin-top:8px"></div>
+    </div>
+    <button class="btn go" id="planGo">Find the way</button>
+    <div id="planResult" aria-live="polite"></div>
+    <p class="foot">All times are <b>estimates</b> from Vamos's simple travel model: average speeds including sleep, a 28 km map grid, and roads and rails assumed wherever there's land (short bridges and tunnels included). Flights use real airport locations from <a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a> (airports with scheduled service), but the times are worked out, not taken from timetables: 3 hours at the airports, 30 minutes of taxiing and 800 km/h in the air. It doesn't check whether an airline really flies that route; big airports may fly up to 15,000 km and smaller ones up to 2,500 km. Countries and cities from Natural Earth.</p>
+   </div>
+    <p class="foot">Planes are banned in the game. Terrain from <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (Mapzen; SRTM, GMTED, ETOPO1 and others). Borders from Natural Earth via world-atlas; lakes from Natural Earth. Streets from © OpenStreetMap contributors. Port locations from Natural Earth. Characters are original, inspired by well-known stories. Satellite imagery from EOxCloudless by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0. Speeds and rules are a simplified game model, not real travel advice.</p>
   </aside>
 </div>
 <dialog class="online" id="online" aria-label="Vamos online">
@@ -304,6 +377,7 @@ select { font: 15px var(--body); padding: 6px 8px; border: 2px solid var(--ink);
 </dialog>
 <script src="phys.js"></script>
 <script src="game.js"></script>
+<script src="planner.js"></script>
 <script src="online.js"></script>
 </body>
 </html>

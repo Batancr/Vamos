@@ -11,12 +11,14 @@ D = os.path.join(ROOT, 'docs')
 read = lambda p, m='r': open(os.path.join(D, p), m).read()
 
 html = read('index.html')
-phys, game, worker, online = read('phys.js'), read('game.js'), read('worker.js'), read('online.js')
+phys, game, planner, worker, online = read('phys.js'), read('game.js'), read('planner.js'), read('worker.js'), read('online.js')
 inline = {
     'grid': base64.b64encode(read('data/grid.bin', 'rb')).decode(),
     'base': 'data:image/webp;base64,' + base64.b64encode(read('data/basemap.webp', 'rb')).decode(),
     'borders': json.loads(read('data/borders.json')),
     'places': json.loads(read('data/places.json')),
+    'planner': json.loads(read('data/planner.json')),
+    'countries': base64.b64encode(read('data/countries.bin', 'rb')).decode(),
     'physSrc': phys,
     'workerSrc': worker,
 }
@@ -25,8 +27,8 @@ body = re.search(r'<body>(.*?)</body>', html, re.S).group(1)
 head = re.sub(r'<meta[^>]*>\s*', '', head)  # the host supplies charset and viewport
 safe = lambda s: s.replace('</script', '<\\/script')
 scripts = (f'<script>window.VAMOS_INLINE = {safe(json.dumps(inline))};</script>\n'
-           f'<script>\n{safe(phys)}\n</script>\n<script>\n{safe(game)}\n</script>\n<script>\n{safe(online)}\n</script>\n')
-body = re.sub(r'<script src="phys.js"></script>\s*<script src="game.js"></script>\s*<script src="online.js"></script>\s*', lambda m: scripts, body)
+           f'<script>\n{safe(phys)}\n</script>\n<script>\n{safe(game)}\n</script>\n<script>\n{safe(planner)}\n</script>\n<script>\n{safe(online)}\n</script>\n')
+body = re.sub(r'<script src="phys.js"></script>\s*<script src="game.js"></script>\s*<script src="planner.js"></script>\s*<script src="online.js"></script>\s*', lambda m: scripts, body)
 os.makedirs(os.path.join(ROOT, 'preview'), exist_ok=True)
 out = os.path.join(ROOT, 'preview', 'vamos.html')
 open(out, 'w').write(head.strip() + '\n' + body.strip() + '\n')
