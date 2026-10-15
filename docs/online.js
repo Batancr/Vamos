@@ -319,9 +319,18 @@ async function renderPlayer(body, name) {
     <span>1v1 record</span><span class="t">${w} won · ${l} lost</span>
     <span>Badges</span><span class="t">${got.length} of ${BADGES.length}</span></div>
     <p class="badgeline">${got.length ? got.map(B => `<span title="${esc(B.name)}">${B.icon}</span>`).join(' ') : '<span class="hint">No badges yet.</span>'}</p>
-    ${self ? '<div class="row"><button class="btn small" id="oOut">Sign out</button></div><p class="hint">Your stats and badges save to this account automatically.</p>'
+    ${self ? '<div class="row"><button class="btn small" id="oOut">Sign out</button><button class="btn small" id="oDelete">Delete my account</button></div><p class="hint" id="oDelMsg">Your stats and badges save to this account automatically.</p>'
       : O.me ? `<div class="row"><button class="btn small" id="oDuel">⚔️ Challenge ${esc(p.username)} on the current trip</button></div><p class="hint" id="oDuelMsg"></p>` : ''}`;
   if ($('oOut')) $('oOut').onclick = async () => { await O.sb.auth.signOut(); closeOnline(); toast('Signed out'); };
+  if ($('oDelete')) $('oDelete').onclick = async () => {
+    const typed = prompt(`This deletes your account, profile, scores, 1v1 games and chat messages for good. Stats and badges stay in this browser.\n\nType your username (${p.username}) to confirm.`);
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== p.username.toLowerCase()) { $('oDelMsg').textContent = 'That didn\'t match your username, so nothing was deleted.'; return; }
+    $('oDelMsg').textContent = 'Deleting…';
+    const { error } = await O.sb.rpc('delete_my_account');
+    if (error) { $('oDelMsg').textContent = 'Something went wrong and your account was not deleted. Try again later.'; return; }
+    await O.sb.auth.signOut().catch(() => {}); closeOnline(); toast('Your account and its data were deleted', 3000);
+  };
   if ($('oDuel')) $('oDuel').onclick = async () => { const err = await postMatch(p.username); if (err) $('oDuelMsg').textContent = err; };
 }
 async function renderLobby(body) {
@@ -434,12 +443,17 @@ function renderChatList() {
   el.innerHTML = shown.length ? shown.map(m => {
     const mine = O.me && m.user_id === O.me.id, name = O.names.get(m.user_id) || '?';
     return `<li class="${mine ? 'me' : ''}${m.body.startsWith('🗺️') ? ' plan' : ''}"><b>${esc(name)}</b> <span>${esc(cleanChat(m.body))}</span> <small>${time(m.created_at)}</small>
-      ${mine ? `<button class="linkish" data-del="${m.id}" aria-label="Delete your message">✕</button>` : O.me ? `<button class="linkish" data-mute="${esc(m.user_id)}" title="Hide messages from ${esc(name)}" aria-label="Mute ${esc(name)}">🔇</button>` : ''}</li>`;
+      ${mine ? `<button class="linkish" data-del="${m.id}" aria-label="Delete your message">✕</button>` : O.me ? `<button class="linkish" data-mute="${esc(m.user_id)}" title="Hide messages from ${esc(name)}" aria-label="Mute ${esc(name)}">🔇</button><button class="linkish" data-report="${m.id}" title="Report this message" aria-label="Report this message from ${esc(name)}">🚩</button>` : ''}</li>`;
   }).join('') : '<li class="empty">No messages yet. Say hi, or share how you plan to get there.</li>';
   if (atBottom || !el.dataset.ready) el.scrollTop = el.scrollHeight; el.dataset.ready = 1;
   el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     const { error } = await O.sb.from('chat').delete().eq('id', +b.dataset.del);
     if (!error) { C.msgs = C.msgs.filter(m => m.id !== +b.dataset.del); renderChatList(); }
+  });
+  el.querySelectorAll('[data-report]').forEach(b => b.onclick = async () => {
+    if (!confirm('Report this message as breaking the chat rules? It will be checked by hand.')) return;
+    const { error } = await O.sb.rpc('report_message', { msg_id: +b.dataset.report });
+    toast(error ? (/slow down|gone|sign in/i.test(error.message) ? error.message.replace(/^.*?((Slow down|That message|Sign in)[^.]*).*$/s, '$1') : 'Report not sent. Try again.') : 'Thanks, reported. You can also 🔇 mute them.', 3000);
   });
   el.querySelectorAll('[data-mute]').forEach(b => b.onclick = () => {
     C.muted = [...C.muted, b.dataset.mute].slice(-200); try { localStorage.setItem('vamos.muted', JSON.stringify(C.muted)); } catch {}

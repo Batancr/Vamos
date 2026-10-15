@@ -9,6 +9,7 @@
 - **6 Oct 2026:** biome layer (desert, grassland, jungle, ice and snow) with terrain characters (Rabbit, Camel, Monkey, Penguin; Fox, Mountaineer and Relic Hunter got terrain strengths), on/off switches for each stop kind and terrain shading, and online play on Supabase: accounts, ranked daily trips and a 1v1 lobby.
 - **6 Oct 2026:** danger levels (Off to Nightmare, plus Custom odds), accidents per mode, an energy meter with exhaustion, and Zoo Bonanza with three animal mounts (horse, camel ride, elephant). Built from Alexander's brainstorm; a browser AI's write-up was used only where it matched it.
 - **10 Oct 2026:** characters off by default (Alexander: "simpler is better"), and a separate 🧭 Route Planner tab: pick a start and finish (place, country or map tap) and allowed modes, including planes, and see the fastest route or how far you get and what blocks you.
+- **15 Oct 2026:** trust items from the Instagram checklist (Alexander chose 1 to 6): one "Privacy and rules" page (`docs/legal.html`) linked once at the bottom of the panel, "Delete my account", a 🚩 report button in chat, self-hosted fonts and a "Loading the map…" message.
 
 ## The gap (checked 5 Oct 2026)
 - The closest existing game is [Georoute](https://georoutegame.com/): you connect cities by car, boat, ship, plane or helicopter and score for the fastest or cheapest route. It works in city-to-city hops.
@@ -64,6 +65,10 @@
 - **Route Planner (10 Oct 2026).** A separate tab, not scored. It reuses the game's map, terrain grid, speeds and solver worker; `planTrip` in phys.js is a multi-start, multi-finish version of the best-route search. Differences from the game solver: changing mode costs that mode's setup time inside the search (so routes don't flip between train and boat every cell); cars, coaches, trains, hitchhiking and boats may hop one grid cell of the wrong surface (bridges, tunnels, canals), which the game solver doesn't; if the finish can't be reached it returns the reached cell nearest the finish, then follows the straight line toward the finish to say what's in the way and how wide it is. Speeds are day-averaged like the game's par, so times include sleep. Characters and stats are ignored.
 - **Planes in the planner only.** The game stays plane-free. Airports: OurAirports `airports.csv` (large and medium airports with scheduled service and an IATA code, 3,244 of them). Flight time = 3 h at the airports + 30 min taxi + distance at 800 km/h. Large airports fly to each other up to 15,000 km; any flight involving a medium airport is limited to 2,500 km. These rules are mine, not data: real routes, schedules and layovers aren't modelled. The OpenFlights route list (ODbL) would say which routes exist, but it stopped updating in June 2014 (airports like Istanbul's new one are missing), so it isn't used.
 - **Countries for the planner.** Natural Earth 1:50m countries rasterised onto the 0.25° grid (a cell belongs to the country its centre falls in). Picking a country means "anywhere in it". Very small countries that cover no cell centre use their label point instead. Greenland is its own entry, separate from Denmark.
+- **Privacy and rules: one page, one link (Alexander, 15 Oct 2026: "be sure not to clutter").** `docs/legal.html` holds privacy, terms, chat rules, how to delete data and contact, in plain language; it's not legal advice. The contact route is a GitHub issue, so no personal email goes in public files. It has to be updated whenever Vamos starts storing something new or loads a new outside service.
+- **Delete my account** calls `delete_my_account()` in Supabase, which deletes the login; every table is linked to it with "on delete cascade", so profile, scores, 1v1 games (for both players) and chat go too. The player types their username to confirm. Tested on a local Postgres 16 with a stand-in auth schema, not yet on the real Supabase project.
+- **Reports** go into a `reports` table nobody can read through the site; Alexander checks them in Supabase's Table Editor. Each keeps a copy of the message, so it still makes sense after the message is deleted. One report per player per message, 10 an hour.
+- **Self-hosted fonts.** Bungee, Atkinson Hyperlegible and IBM Plex Mono (all SIL Open Font License 1.1) are in `docs/fonts/`, copied from the @fontsource npm packages 5.3.0, Latin and Latin Extended only. Visitors' browsers no longer contact Google Fonts. The Supabase library still loads from jsDelivr; the privacy page says so.
 
 ## Game numbers and where they come from
 These are game-balance choices unless a source is named. Confidence: H = high, M = medium, L = low or invented for fun.
@@ -143,6 +148,9 @@ Data sources and licences are in `data/raw/README.md`.
 - [ ] Verify the OurAirports licence wording on ourairports.com/data (believed public domain; I couldn't open the page on 10 Oct 2026).
 - [ ] Planner: consider real flight routes (needs an up-to-date route source) and real road/rail/ferry networks; today roads and rails are assumed on all land.
 - [ ] Planner: pick a final name for the tab (working name "Route Planner").
+- [ ] Re-run `supabase/setup.sql` in Supabase so reports and account deletion work, then try deleting a test account.
+- [ ] Decide on a minimum age or limits on chat for younger players (checklist item 7).
+- [ ] Consider self-hosting the Supabase library too (it loads from jsDelivr).
 
 ## How Alexander likes to work
 - Say clearly when something is uncertain. Never invent sources or URLs, and flag numbers that need checking.

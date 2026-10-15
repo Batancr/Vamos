@@ -15,6 +15,7 @@
 | Streets (loaded live) | OpenStreetMap standard tiles `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | © OpenStreetMap contributors, ODbL; tile usage policy applies | Streets layer |
 | Countries and cities (Route Planner) | Natural Earth 1:50m admin-0 countries and populated places from https://github.com/nvkelso/natural-earth-vector | Public domain (Natural Earth). **To verify.** | `docs/data/countries.bin`, `docs/data/planner.json` (built by `tools/build_planner.py`) |
 | Airports (Route Planner) | OurAirports `airports.csv`, GitHub mirror https://github.com/davidmegginson/ourairports-data (downloaded 10 Oct 2026) | Described as public domain on ourairports.com/data. **To verify**: I couldn't open that page from here. | `docs/data/planner.json` |
+| Fonts | Bungee, Atkinson Hyperlegible, IBM Plex Mono from the @fontsource npm packages 5.3.0 | SIL Open Font License 1.1 (licence files in `docs/fonts/`) | `docs/fonts/` |
 
 Lakes skipped on purpose (`DRY` in `tools/build_data.py`): Australian salt pans that are dry most of the time (Lake Eyre North and South, Frome, Gairdner, Torrens, Mackay, Disappointment, Barlee).
 

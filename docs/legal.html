@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Vamos privacy, terms and chat rules, in plain language.">
+<title>Vamos: privacy and rules</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+:root { --sea: #cfe4ea; --ink: #1c2a33; --ticket: #fbf8f1; --stamp: #c8402f; --gold: #e9b949; --muted: #5e6d73; --line: #d9d2c3;
+  --display: 'Bungee', 'Arial Black', Impact, sans-serif; --body: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif; color-scheme: light; }
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--sea); color: var(--ink); font: 16px/1.55 var(--body); -webkit-text-size-adjust: 100%; }
+main { max-width: 720px; margin: 24px auto; padding: 24px 20px 32px; background: var(--ticket); border: 3px solid var(--ink); border-radius: 12px; }
+@media (max-width: 760px) { main { margin: 0; border: 0; border-radius: 0; padding: 20px 16px 28px; } }
+h1 { font-family: var(--display); font-weight: 400; font-size: 30px; margin: 0 0 4px; text-shadow: 2px 2px 0 var(--gold); }
+h2 { font-family: var(--display); font-weight: 400; font-size: 19px; margin: 28px 0 6px; padding-top: 16px; border-top: 3px dashed var(--line); }
+h3 { font-size: 16px; margin: 18px 0 4px; }
+p, li { margin: 6px 0; }
+ul { padding-left: 22px; }
+a { color: var(--ink); }
+a:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.muted { color: var(--muted); font-size: 14px; }
+.back { display: inline-block; font-weight: 700; margin-bottom: 14px; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; font-weight: 700; margin: 10px 0 0; }
+code { font-size: 14px; background: var(--sea); padding: 0 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">← Back to Vamos</a>
+  <h1>Privacy and rules</h1>
+  <p class="muted">Last updated 15 October 2026. Vamos is a free hobby game. This page explains, in plain language, what it stores and the rules for playing online. It isn't written by a lawyer.</p>
+  <nav class="toc" aria-label="On this page"><a href="#privacy">Privacy</a><a href="#terms">Terms</a><a href="#chat">Chat rules</a><a href="#delete">Delete your data</a><a href="#contact">Contact</a></nav>
+
+  <h2 id="privacy">Privacy</h2>
+  <h3>Without an account</h3>
+  <p>You can play without an account. Nothing about you is sent to Vamos. Your stats, badges, settings, muted players and friend-challenge results are kept in your own browser (local storage) and never leave your device unless you copy a backup code or share a challenge link yourself.</p>
+
+  <h3>With an account</h3>
+  <p>Accounts, ranked play, 1v1 games and chat are stored with <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a>, a database service. An account holds:</p>
+  <ul>
+    <li><b>Your email and password.</b> Used only to sign in and to send sign-up and password-reset emails. Never shown to other players. Supabase stores the password scrambled (hashed), so nobody can read it.</li>
+    <li><b>Your username</b>, which other players see.</li>
+    <li><b>Your stats, badges and chosen character</b>, shown on your public profile.</li>
+    <li><b>Ranked scores and 1v1 results.</b> Times and points are public. Your routes are hidden from other players (in a 1v1, until both of you have finished).</li>
+    <li><b>Chat messages</b>, which anyone can read. They're deleted automatically after about 30 days, and you can delete your own at any time.</li>
+    <li><b>Reports</b> you make about chat messages (see the chat rules below).</li>
+  </ul>
+  <p>Signing in keeps a sign-in token in your browser so you stay signed in. Vamos doesn't use advertising, tracking or analytics, and doesn't set its own cookies.</p>
+
+  <h3>Other services your browser talks to</h3>
+  <ul>
+    <li><b>GitHub Pages</b> hosts the site, so GitHub receives normal web requests (such as your IP address) when you visit.</li>
+    <li><b>jsDelivr</b> serves the Supabase code that online play uses, so it sees a request when the page loads.</li>
+    <li><b>Map pictures</b> load from OpenStreetMap (streets) and EOX (satellite imagery) when you zoom in, so those services see a request from your browser.</li>
+    <li><b>Google Maps</b> opens only if you press 🔭 Look around, in a new tab.</li>
+    <li>Fonts are stored on the Vamos site itself, so no font service is contacted.</li>
+  </ul>
+  <p>Each of these services has its own privacy policy.</p>
+
+  <h2 id="terms">Terms</h2>
+  <ul>
+    <li>Vamos is free and provided as it is, with no guarantee that it works or stays online.</li>
+    <li><b>Travel times are a game.</b> Speeds and rules in the game and in the Route Planner are simplified estimates. Don't use them to plan real journeys or to judge what's safe.</li>
+    <li>One account per person, please. Usernames must not be rude, hateful or pretend to be someone else; such accounts may be renamed or removed.</li>
+    <li>Scores are worked out in your browser. Faking times or abusing the game may get scores or accounts removed.</li>
+    <li>Anything you post (usernames, chat, shared plans) is public, so don't post anything you wouldn't want others to see.</li>
+    <li>These rules may change. The date at the top says when they last did.</li>
+  </ul>
+
+  <h2 id="chat">Chat rules</h2>
+  <ul>
+    <li>Be kind. No bullying, hate, threats or sexual content.</li>
+    <li>No personal details: don't share your own or anyone else's address, phone number, email, school or social media.</li>
+    <li>No spam or advertising.</li>
+    <li>Use 🔇 to hide someone's messages on your device, and 🚩 to report a message that breaks these rules. Reports are checked by hand, so it may take a while.</li>
+    <li>Messages that break the rules may be deleted, and players who keep breaking them may lose their account.</li>
+  </ul>
+
+  <h2 id="delete">Delete your data</h2>
+  <ul>
+    <li><b>Your account:</b> sign in, open 👤 Account, and press <b>Delete my account</b>. This deletes your account, profile, scores, 1v1 games and chat messages straight away. 1v1 games you played with others are removed for them too. If someone reported one of your messages, a copy stays with that report until it has been checked.</li>
+    <li><b>A single chat message:</b> press ✕ next to it.</li>
+    <li><b>Data in your browser:</b> clear this site's data in your browser settings.</li>
+  </ul>
+
+  <h2 id="contact">Contact</h2>
+  <p>For questions about this page, or anything you can't do yourself above, open an issue on the <a href="https://github.com/batancr/Vamos/issues" target="_blank" rel="noopener">Vamos GitHub page</a>. Please don't put personal details in it, because issues are public.</p>
+</main>
+</body>
+</html>

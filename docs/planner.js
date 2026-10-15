@@ -201,7 +201,8 @@ window.Planner = (() => {
     $('gamePanel').hidden = tab === 'plan'; $('planPanel').hidden = tab !== 'plan';
     $('map').setAttribute('aria-label', tab === 'plan' ? 'World map. Tap to set the start or finish of a route.' : 'World map. Click to add stops to your route.');
     if (tab === 'game') { fitTrip(); return; }
-    try { await load(); } catch { $('planResult').innerHTML = '<p class="hint">The planner data did not load. Check your connection and reload the page.</p>'; return; }
+    if (!P.data) $('planResult').innerHTML = '<p class="hint">Loading places and airports…</p>';
+    try { await load(); if ($('planResult').textContent.startsWith('Loading')) $('planResult').innerHTML = ''; } catch { $('planResult').innerHTML = '<p class="hint">The planner data did not load. Check your connection and reload the page.</p>'; return; }
     fit();
   }
   const setHash = h => { try { history.replaceState(null, '', h || location.pathname + location.search); } catch {} }; // can fail in sandboxed previews

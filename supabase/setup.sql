@@ -182,3 +182,48 @@ begin
 end $$;
 drop trigger if exists chat_guard on public.chat;
 create trigger chat_guard before insert on public.chat for each row execute function public.chat_guard();
+
+-- ---------- reports: players flag chat messages for Alexander to check ----------
+-- Nobody can read reports through the site; open Table Editor → reports to see them. A copy of the message is kept,
+-- so the report still makes sense after the message is deleted. One report per player per message, 10 an hour.
+create table if not exists public.reports (
+  id bigint generated always as identity primary key,
+  reporter uuid not null references public.profiles (id) on delete cascade,
+  chat_id bigint,
+  reported uuid,
+  body text,
+  room text,
+  created_at timestamptz not null default now(),
+  unique (reporter, chat_id)
+);
+alter table public.reports enable row level security;
+revoke all on public.reports from anon, authenticated;
+
+create or replace function public.report_message(msg_id bigint) returns void
+language plpgsql security definer set search_path = '' as $$
+declare m public.chat;
+begin
+  if auth.uid() is null then raise exception 'Sign in to report messages'; end if;
+  select * into m from public.chat where id = msg_id;
+  if m.id is null then raise exception 'That message is gone already'; end if;
+  if m.user_id = auth.uid() then raise exception 'You can delete your own message instead'; end if;
+  if (select count(*) from public.reports where reporter = auth.uid() and created_at > now() - interval '1 hour') >= 10 then
+    raise exception 'Slow down: too many reports this hour';
+  end if;
+  insert into public.reports (reporter, chat_id, reported, body, room) values (auth.uid(), m.id, m.user_id, m.body, m.room)
+    on conflict (reporter, chat_id) do nothing;
+end $$;
+revoke execute on function public.report_message(bigint) from public, anon;
+grant execute on function public.report_message(bigint) to authenticated;
+
+-- ---------- delete my account ----------
+-- Deletes the signed-in player's login. Everything else goes with it: profiles, runs, matches (including 1v1 games
+-- with other players), chat and reports are all linked to the account with "on delete cascade".
+create or replace function public.delete_my_account() returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  delete from auth.users where id = auth.uid();
+end $$;
+revoke execute on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;

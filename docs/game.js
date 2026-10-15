@@ -830,7 +830,8 @@ async function loadAssets() {
 }
 (async () => {
   try { await loadAssets(); }
-  catch (err) { $('hint').textContent = 'The map data did not load. Check your connection and reload the page.'; return; }
+  catch (err) { $('hint').textContent = $('loading').textContent = 'The map data did not load. Check your connection and reload the page.'; return; }
+  $('loading').hidden = true;
   $('rulesNote').textContent = RULES[S.rules].note;
   const lr = $('layerMenu').querySelector(`input[value="${layer}"]`); if (lr) lr.checked = true;
   try { const sh = JSON.parse(localStorage.getItem('vamos.show') || '{}'); for (const k in S.show) if (typeof sh[k] === 'boolean') S.show[k] = sh[k]; } catch {}

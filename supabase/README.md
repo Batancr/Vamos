@@ -20,9 +20,12 @@ Supabase changes its dashboard now and then, so menu names below may differ slig
 - `matches`: 1v1 games. Routes are hidden until both players finish.
 - `leaderboard`: a view adding up ranked points.
 - `chat`: chat messages (room, sender, text, time). Kept 30 days. To remove a message, open **Table Editor → chat** and delete the row.
+- `reports`: chat messages players flagged with 🚩 (who reported, who wrote it, a copy of the text, the room). Only you can see these, in **Table Editor → reports**. Delete a row once you've dealt with it.
 
-## Adding chat to an existing setup
-Chat came after the first setup. Paste the whole of `setup.sql` into **SQL Editor → New query** again and press **Run**. It keeps every existing account, score and match, and adds the chat table.
+Players can delete their whole account from 👤 Account (the `delete_my_account` function). That removes their login, profile, scores, 1v1 games and chat in one go.
+
+## Adding new features to an existing setup
+Chat, reports and account deletion came after the first setup. Paste the whole of `setup.sql` into **SQL Editor → New query** again and press **Run**. It keeps every existing account, score and match, and adds whatever is new.
 
 ## Limits to know about (check them on Supabase's pricing page)
 - Free projects are paused after a stretch without activity (about a week, last I knew); you restore them from the dashboard.
